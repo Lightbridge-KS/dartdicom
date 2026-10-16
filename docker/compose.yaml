@@ -1,0 +1,29 @@
+# The minimal test PACS for the live gates (blueprint §3, §9): a stock Orthanc.
+# Any richer Orthanc-based test PACS can stand in; the live gates read its
+# address from the environment.
+#
+#   docker compose -f docker/compose.yaml up -d
+#
+# dartdicom's test ports avoid the usual 4242/8042/11112, which other local
+# PACS and toys tend to hold (checked free 2026-10-16):
+#   14242  DIMSE, called AE title ORTHANC
+#   18042  REST + /dicom-web/
+#   14112  the app's embedded Storage SCP, AE DARTDICOM (C-MOVE destination)
+# Each is still overridable, e.g. ORTHANC_DIMSE_PORT=24242.
+services:
+  orthanc:
+    image: orthancteam/orthanc:26.9.1
+    ports:
+      - "${ORTHANC_DIMSE_PORT:-14242}:4242"
+      - "${ORTHANC_HTTP_PORT:-18042}:8042"
+    environment:
+      ORTHANC__NAME: dartdicom-test-pacs
+      ORTHANC__DICOM_AET: ORTHANC
+      ORTHANC__AUTHENTICATION_ENABLED: "false"
+      DICOM_WEB_PLUGIN_ENABLED: "true"
+      # A disposable test PACS: let any SCU find and get.
+      ORTHANC__DICOM_ALWAYS_ALLOW_FIND: "true"
+      ORTHANC__DICOM_ALWAYS_ALLOW_GET: "true"
+      # The C-MOVE destination: the app's embedded Storage SCP on the host.
+      ORTHANC__DICOM_MODALITIES: |
+        {"dartdicom": {"AET": "DARTDICOM", "Host": "host.docker.internal", "Port": ${DARTDICOM_SCP_PORT:-14112}}}

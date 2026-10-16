@@ -1,0 +1,19 @@
+name: dartdicom_pixel
+description: >-
+  Decode DICOM Pixel Data into typed arrays in pure Dart, apply Modality and VOI LUTs, and produce 8-bit display buffers for Flutter or PNG.
+version: 0.1.0-dev.1
+repository: https://github.com/Lightbridge-KS/dartdicom/tree/main/dartdicom_pixel
+issue_tracker: https://github.com/Lightbridge-KS/dartdicom/issues
+topics: [dicom, medical-imaging, radiology, image-processing]
+
+environment:
+  sdk: ^3.6.0
+
+resolution: workspace
+
+dependencies:
+  dartdicom: ^0.1.0-dev.1
+
+dev_dependencies:
+  lints: ">=5.1.0 <7.0.0"
+  test: ^1.25.0

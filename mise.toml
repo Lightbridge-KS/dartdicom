@@ -1,0 +1,4 @@
+# Dev toolchain pin (not the package floor: that is `sdk:` in each pubspec.yaml).
+# Bump on purpose: `mise use dart@<version>`.
+[tools]
+dart = "3.13.5"

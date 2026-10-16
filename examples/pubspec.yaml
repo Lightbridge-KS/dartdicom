@@ -1,0 +1,17 @@
+name: dartdicom_examples
+description: Runnable end-to-end examples across the dartdicom packages (not published).
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+resolution: workspace
+
+dependencies:
+  dartdicom: ^0.1.0-dev.1
+  dartdicom_pixel: ^0.1.0-dev.1
+  dartdicom_net: ^0.1.0-dev.1
+  dartdicom_web: ^0.1.0-dev.1
+
+dev_dependencies:
+  lints: ">=5.1.0 <7.0.0"

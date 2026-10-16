@@ -1,0 +1,13 @@
+# Dart
+.dart_tool/
+build/
+# Library packages don't commit lockfiles; CI resolves fresh (the floor job relies on it).
+pubspec.lock
+
+# Local only
+_playground/
+CLAUDE.local.md
+.claude/.cc-writes
+# Holds a machine path (dart.sdkPath to the mise install)
+.vscode/settings.json
+.DS_Store

@@ -1,0 +1,14 @@
+name: dartdicom_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+# Members are listed explicitly: glob patterns need Dart >= 3.11, and the CI
+# floor job runs Dart 3.6 (blueprint F8).
+workspace:
+  - dartdicom
+  - dartdicom_pixel
+  - dartdicom_net
+  - dartdicom_web
+  - examples

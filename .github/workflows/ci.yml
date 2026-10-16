@@ -1,0 +1,42 @@
+# Dry gates (hermetic) on every push to main and every PR: blueprint §9.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pinned:
+    name: dry gates (Dart pinned in mise.toml)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.1.1 # installs the Dart from mise.toml
+      - run: dart pub get
+      - name: dry gates (format, analyze, deps, vm + chrome tests, wasm, publish dry-run)
+        run: tool/dry_gates.sh
+        env:
+          WEB_PLATFORM: chrome
+
+  floor:
+    # The package floor (`sdk: ^3.6.0`). Language versioning only catches newer
+    # *language* features; this job catches newer core-library APIs. No format
+    # check here: the formatter's output depends on the SDK version.
+    name: dry gates (Dart 3.6 floor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dart-lang/setup-dart@v1.8.1
+        with:
+          sdk: 3.6.0
+      - run: dart pub get
+      - run: dart analyze --fatal-infos
+      - run: tool/test_all.sh

@@ -1,0 +1,73 @@
+// Structural invariants of the core package (blueprint §8). VM only: it reads
+// the source tree with dart:io, which the core library itself never imports.
+@TestOn('vm')
+library;
+
+import 'dart:io';
+
+import 'package:test/test.dart';
+
+final _libFiles = Directory('lib')
+    .listSync(recursive: true)
+    .whereType<File>()
+    .where((f) => f.path.endsWith('.dart'))
+    .toList();
+
+/// `lib/io.dart` and `lib/src/io/` form the native adapter (blueprint §4).
+bool _isNativeAdapter(File f) =>
+    f.path == 'lib/io.dart' || f.path.startsWith('lib/src/io/');
+
+/// Top-level mutable state: `var`/`late`/non-const `final`, or a typed
+/// declaration with an initializer, starting at column 0 (I-7).
+final _topLevelMutable = RegExp(
+  r'^(?:(?:var|late|final)\s|(?!const\b|return\b|typedef\b)[A-Za-z_][\w<>?, ]*\s+[a-z_]\w*\s*=)',
+);
+
+List<String> _offenders(Iterable<File> files, RegExp pattern) => [
+      for (final f in files)
+        for (final (i, line) in f.readAsLinesSync().indexed)
+          if (pattern.hasMatch(line)) '${f.path}:${i + 1}: ${line.trim()}',
+    ];
+
+void main() {
+  test('I-1: core lib/ imports no platform library (outside the io adapter)',
+      () {
+    final banned = RegExp(
+      r'''^\s*(?:import|export)\s+['"](?:dart:io|dart:ffi|dart:html|dart:js_interop|package:flutter/)''',
+    );
+    expect(_offenders(_libFiles.where((f) => !_isNativeAdapter(f)), banned),
+        isEmpty);
+  });
+
+  test('I-5: dataset/ imports nothing from read/ or write/', () {
+    final dataset =
+        _libFiles.where((f) => f.path.startsWith('lib/src/dataset/'));
+    final banned = RegExp(r'''^\s*import\s+['"].*(?:/read/|/write/)''');
+    expect(_offenders(dataset, banned), isEmpty);
+  });
+
+  test('I-7: no top-level mutable variables in lib/', () {
+    // Guard the guard: the pattern must flag mutable declarations and leave
+    // constants, functions and types alone.
+    for (final bad in ['var x = 1;', 'final m = <int>{};', 'int n = 0;']) {
+      expect(_topLevelMutable.hasMatch(bad), isTrue, reason: bad);
+    }
+    for (final ok in [
+      'const x = 1;',
+      'int f() => 1;',
+      'typedef F = int;',
+      'extension type const Tag(int value) {',
+    ]) {
+      expect(_topLevelMutable.hasMatch(ok), isFalse, reason: ok);
+    }
+    expect(_offenders(_libFiles, _topLevelMutable), isEmpty);
+  });
+
+  test('I-22: no temp-file or cache APIs in lib/', () {
+    expect(_offenders(_libFiles, RegExp(r'systemTemp|createTemp')), isEmpty);
+  });
+
+  test('no print() in library code', () {
+    expect(_offenders(_libFiles, RegExp(r'(?<![\w.])print\(')), isEmpty);
+  });
+}

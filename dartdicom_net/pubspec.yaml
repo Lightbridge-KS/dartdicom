@@ -1,0 +1,19 @@
+name: dartdicom_net
+description: >-
+  DICOM networking (DIMSE) in pure Dart: C-ECHO, C-FIND, C-GET, C-MOVE and C-STORE as an SCU, with an embedded Storage SCP for C-MOVE.
+version: 0.1.0-dev.1
+repository: https://github.com/Lightbridge-KS/dartdicom/tree/main/dartdicom_net
+issue_tracker: https://github.com/Lightbridge-KS/dartdicom/issues
+topics: [dicom, medical-imaging, radiology, networking]
+
+environment:
+  sdk: ^3.6.0
+
+resolution: workspace
+
+dependencies:
+  dartdicom: ^0.1.0-dev.1
+
+dev_dependencies:
+  lints: ">=5.1.0 <7.0.0"
+  test: ^1.25.0

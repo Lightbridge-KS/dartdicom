@@ -1,0 +1,27 @@
+# Fast hooks only (format, secrets, hygiene). Analysis and tests run in CI and
+# in tool/dry_gates.sh. Run with prek: `prek run --all-files`; `prek install`
+# adds the git hook.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=512] # the fixture size budget, per file (blueprint §3)
+
+  - repo: local
+    hooks:
+      - id: dart-format
+        name: dart format
+        entry: dart format
+        language: system
+        types: [dart]
+        exclude: ^_playground/
+      - id: gitleaks
+        name: gitleaks
+        entry: gitleaks git --pre-commit --staged --redact --no-banner
+        language: system
+        pass_filenames: false
