@@ -1,0 +1,41 @@
+[project]
+name = "dartdicom-fixtures"
+version = "0.1.0"
+description = "Test data for dartdicom: synthetic DICOM scenarios, curated pydicom copies, pydicom's golden reading of each, and pinned corpora."
+readme = "README.md"
+requires-python = ">=3.13"
+# Never published: this is repo tooling. The classifier makes PyPI refuse it.
+classifiers = ["Private :: Do Not Upload"]
+# pydicom and numpy are pinned exactly: their output *is* the golden data.
+dependencies = [
+    "numpy==2.5.4",
+    "pydicom==3.0.2",
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+fixtures = "dartdicom_fixtures.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff==0.17.1",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

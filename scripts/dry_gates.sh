@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The dry gate suite (hermetic), the same one CI runs on every PR.
-#   tool/dry_gates.sh            everything, web tests on node
-#   WEB_PLATFORM=chrome tool/dry_gates.sh
+#   scripts/dry_gates.sh            everything, web tests on node
+#   WEB_PLATFORM=chrome scripts/dry_gates.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -12,10 +12,18 @@ step() { echo; echo "### $*"; }
 
 step "format";   dart format --output=none --set-exit-if-changed $dirs
 step "analyze";  dart analyze --fatal-infos
-step "deps";     tool/check_deps.sh
-step "test vm";  tool/test_all.sh
-step "test $web"; tool/test_all.sh -p "$web"
+step "deps";     scripts/check_deps.sh
+step "test vm";  scripts/test_all.sh
+step "test $web"; scripts/test_all.sh -p "$web"
 step "wasm";     out="$(mktemp -d)"; dart compile wasm dartdicom/example/dartdicom_example.dart -o "$out/core.wasm" >/dev/null && echo "core compiles to Wasm"
+step "fixtures (python)"
+if command -v uv >/dev/null; then
+  scripts/check_fixtures.sh
+elif [ -n "${CI:-}" ]; then
+  echo "uv is required in CI"; exit 1
+else
+  echo "skipped (uv not installed; CI runs it)"
+fi
 step "publish dry-run"
 for p in dartdicom dartdicom_pixel dartdicom_net dartdicom_web; do
   # pub warns (exit 65) about uncommitted changes. Locally, skip a dirty

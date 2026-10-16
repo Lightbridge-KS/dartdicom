@@ -1,5 +1,5 @@
 ---
-summary: The developer-facing and agent-facing surface of the dartdicom packages. Covers the cheat sheet; the public API map per package and entry import; onboarding with the pydicom → dartdicom mapping; usage journeys (read and display, query and retrieve, modify and write); the error and return contract; naming and ergonomics rules (D4, typed tags, sync vs async); agent experience (AX); options. Surface decisions S1–S5 (2026-10-16) are recorded in §8.
+summary: The developer-facing and agent-facing surface of the dartdicom packages. Covers the cheat sheet; the public API map per package and entry import; onboarding with the pydicom → dartdicom mapping; usage journeys (read and display, query and retrieve, modify and write); the error and return contract; naming and ergonomics rules (D4, typed tags, sync vs async); agent experience (AX); options. Surface decisions S1–S6 (2026-10-16/17) are recorded in §8.
 read_when:
   - adding, naming or changing any public symbol, getter, option or exception
   - writing README, quick-starts, examples, dartdoc, or llms.txt
@@ -28,12 +28,12 @@ final head = DicomFile.fromBytes(bytes,
 final ds = file.dataset;
 
 // Typed reads: the tag decides the type and the multiplicity
-final String? name = ds.get(Tags.patientName);
-final String uid  = ds.require(Tags.sopInstanceUid);            // throws if absent
-final List<double> wc = ds.getAll(Tags.windowCenter);
+final String? name = ds.get(DicomTags.patientName);
+final String uid  = ds.require(DicomTags.sopInstanceUid);            // throws if absent
+final List<double> wc = ds.getAll(DicomTags.windowCenter);
 
 // Modify and write
-ds.set(Tags.patientName, 'Anonymous');
+ds.set(DicomTags.patientName, 'Anonymous');
 await File('anon.dcm').writeAsDicom(file);
 
 // Pixels → screen
@@ -79,7 +79,7 @@ Evidence: PRD §Capabilities; design §3. There is no CLI, so this doc has no CL
 flowchart TD
     core["dartdicom"] --> df["DicomFile: fromBytes · toBytes · meta · dataset"]
     core --> dsn["Dataset: get · require · getAll · set · remove · dump"]
-    core --> tg["Tags · TransferSyntaxes · SopClasses (generated)"]
+    core --> tg["DicomTags · TransferSyntaxes · SopClasses (generated)"]
     core --> ro["ReadOptions · WriteOptions · ReadReport"]
     io["dartdicom/io.dart"] --> fx["File.readAsDicom / Sync · writeAsDicom / Sync"]
     px["dartdicom_pixel"] --> pv["ds.pixels.frame(i) · PixelArray · toDisplay · DisplayBuffer"]
@@ -101,7 +101,7 @@ flowchart TD
 | `ds.getAll(Many<T>)` → `List<T>` | multi-value read; empty if absent | DA1 |
 | `ds.getStrings(Tag)` and the other family list getters | reads for untyped tags (private tags, keyword lookups) | DA1 |
 | `ds.set(One<T>, T)` / `ds.setAll(Many<T>, List<T>)` / `ds.setEmpty(tag)` / `ds.remove(tag)` | modify (S1) | C-06 |
-| `Tags.*` · `TransferSyntaxes.*` · `SopClasses.*` | generated constants | C-03, C-16 |
+| `DicomTags.*` · `TransferSyntaxes.*` · `SopClasses.*` | generated constants | C-03, C-16 |
 | `ReadOptions` · `WriteOptions` | per-call options | C-09, C-11 |
 | `file.report` (`ReadReport`) | the repairs lenient reading made (C-10) | C-10 |
 | `ds.dump()` | readable tree; values masked unless opted in | C-21 |
@@ -138,7 +138,7 @@ import 'package:dartdicom/io.dart';
 
 Future<void> main() async {
   final file = await File('ct.dcm').readAsDicom();
-  print(file.dataset.get(Tags.modality));     // CT
+  print(file.dataset.get(DicomTags.modality));     // CT
   print(file.dataset);                        // Dataset(84 elements): no values, PHI-safe
   print(file.dataset.dump(showValues: true)); // explicit opt-in to see values
 }
@@ -151,10 +151,10 @@ Future<void> main() async {
 | `dcmread(path)` | `await File(path).readAsDicom()` (or `readAsDicomSync()`) |
 | `dcmread(BytesIO(b))` | `DicomFile.fromBytes(b)` |
 | `dcmread(path, stop_before_pixels=True)` | `readAsDicom(options: const ReadOptions(stopBeforePixels: true))` |
-| `ds.PatientName` / `ds[0x00100010].value` | `ds.get(Tags.patientName)` |
-| `ds.WindowCenter` (MultiValue) | `ds.getAll(Tags.windowCenter)` |
-| `ds.PatientName = 'X'` | `ds.set(Tags.patientName, 'X')` |
-| `del ds.PatientName` | `ds.remove(Tags.patientName)` |
+| `ds.PatientName` / `ds[0x00100010].value` | `ds.get(DicomTags.patientName)` |
+| `ds.WindowCenter` (MultiValue) | `ds.getAll(DicomTags.windowCenter)` |
+| `ds.PatientName = 'X'` | `ds.set(DicomTags.patientName, 'X')` |
+| `del ds.PatientName` | `ds.remove(DicomTags.patientName)` |
 | `ds.save_as(path)` / `dcmwrite(path, ds)` | `await File(path).writeAsDicom(file)` |
 | `ds.pixel_array` | `ds.pixels.frame(i)` (one frame; decoding is a method) |
 | `AE(ae_title=...)`, `ae.add_requested_context(...)` | `ApplicationEntity(aeTitle: ..., requestedContexts: [...])` (S2) |
@@ -170,7 +170,7 @@ Future<void> main() async {
 // List view: header only. Pixel Data is never loaded.
 final head = await File(path).readAsDicom(
     options: const ReadOptions(stopBeforePixels: true));
-final desc = head.dataset.get(Tags.seriesDescription);
+final desc = head.dataset.get(DicomTags.seriesDescription);
 
 // Viewer: full read, then one frame to the screen.
 final file = await File(path).readAsDicom();
@@ -200,13 +200,13 @@ sequenceDiagram
 
 ```dart
 final query = Dataset()
-  ..set(Tags.queryRetrieveLevel, 'STUDY')
-  ..set(Tags.patientId, 'P001')
-  ..setEmpty(Tags.studyInstanceUid)     // an empty element means "return this key" (S3)
-  ..setEmpty(Tags.studyDescription);
+  ..set(DicomTags.queryRetrieveLevel, 'STUDY')
+  ..set(DicomTags.patientId, 'P001')
+  ..setEmpty(DicomTags.studyInstanceUid)     // an empty element means "return this key" (S3)
+  ..setEmpty(DicomTags.studyDescription);
 
 await for (final match in assoc.sendCFind(query)) {
-  print(match.get(Tags.studyDescription));
+  print(match.get(DicomTags.studyDescription));
 }
 
 final sub = assoc.sendCGet(seriesQuery, DirectorySink(dir)).listen(
@@ -222,8 +222,8 @@ await sub.cancel();                       // sends C-CANCEL-RQ (F14)
 final file = File(path).readAsDicomSync();
 if (!file.report.isClean) log(file.report.summary());   // repairs made; never values
 file.dataset
-  ..set(Tags.patientName, 'Anonymous')
-  ..remove(Tags.patientBirthDate);
+  ..set(DicomTags.patientName, 'Anonymous')
+  ..remove(DicomTags.patientBirthDate);
 File(outPath).writeAsDicomSync(file);   // untouched elements are copied byte for byte
 ```
 
@@ -239,7 +239,7 @@ File(outPath).writeAsDicomSync(file);   // untouched elements are copied byte fo
 | A VM-1 element holds several values (bad data) | `get` returns the first value, plus a `ReadReport` entry (DA1) |
 | Unreadable or truncated beyond repair | `DicomParseException`, with the offset and the tag where it stopped |
 | A deferred value's file changed on disk | `SourceChangedException` (DA2) |
-| Invalid write (meta and dataset UIDs conflict, value too long, text the declared charset can't encode, non-ASCII text with no Specific Character Set, …) | `DicomWriteException` with the fix in its message (e.g. *set `Tags.specificCharacterSet` to `'ISO_IR 192'`*); nothing is written (C-07, C-11, data §3.4) |
+| Invalid write (meta and dataset UIDs conflict, value too long, text the declared charset can't encode, non-ASCII text with no Specific Character Set, …) | `DicomWriteException` with the fix in its message (e.g. *set `DicomTags.specificCharacterSet` to `'ISO_IR 192'`*); nothing is written (C-07, C-11, data §3.4) |
 
 **Association lifecycle** (user-visible):
 
@@ -282,7 +282,7 @@ stateDiagram-v2
 
 **Use Dart's convention where Dart has one, and the DICOM vocabulary where it doesn't.** See design §6 for the full table. The short version:
 
-- **Shaped by Dart:** `fromBytes` / `toBytes`; `readAsDicom` / `readAsDicomSync`, mirroring `dart:io`; cheap getters but methods for costly work (`ds.pixels.frame(i)`); constants grouped like `Colors.red` (`Tags.patientName`).
+- **Shaped by Dart:** `fromBytes` / `toBytes`; `readAsDicom` / `readAsDicomSync`, mirroring `dart:io`; cheap getters but methods for costly work (`ds.pixels.frame(i)`); constants grouped like `Colors.red` (`DicomTags.patientName`).
 - **Named by DICOM:**
   - concepts: `Dataset`, `DataElement`, `Tag`, `Sequence`, `FileMetaInformation`, `TransferSyntaxes`, `SopClasses`
   - DIMSE: `sendCFind`, which is also a verb phrase for a side effect
@@ -295,6 +295,8 @@ stateDiagram-v2
   - Every constant's dartdoc starts with the DICOM keyword, the tag, VR and VM (`/// SOPInstanceUID (0008,0018) · UI · 1`), so searching for the standard's spelling still finds it.
   - The generator fails on any collision.
   - This rule fixes about 5,000 public names, so it is the hardest naming choice to undo after publishing.
+
+- **VR codes keep DICOM's uppercase** (decided 2026-10-17) (`Vr.PN`, `Vr.IS`), an exception to lowerCamelCase decided during M0. Lowercase `is` is a reserved word, and the two-letter codes are the vocabulary every DICOM reader already uses (pydicom's `VR.IS`, fo-dicom's `DicomVR.IS`).
 
 ### 6.3 Consistency rules
 
@@ -348,6 +350,7 @@ Everything is passed per call or per instance. Nothing is global (PRD constraint
 | S3 | How a C-FIND query is built | **Decided.** A plain `Dataset`, using `setEmpty` for return keys (pynetdicom's model and the standard's own), rather than a separate typed query builder | §4.2 |
 | S4 | Keyword → identifier rule | **Decided.** Effective Dart lowerCamelCase, acronyms folded (`sopInstanceUid`), the DICOM keyword in dartdoc, the generator failing on collisions | §6.2 |
 | S5 | Final status of multi-response operations | **Decided.** Complete normally on Success, Warning or Cancel; a final Failure becomes a stream error; retrieves also carry the final status in their last progress event (refines D3) | §5 |
+| S6 | Name of the generated tag namespace | **Decided 2026-10-17: `DicomTags`** (`DicomTags.patientName`). `Tags` collided with `package:test`'s `Tags` (found in M0), which would give every consumer test file an `ambiguous_import`. Rejected: static constants on `Tag` (the generator would have to emit the whole `Tag` type, with its hand-written members in a template), and keeping `Tags` with a documented `hide`. | §6.2 |
 
 **Rejected:**
 

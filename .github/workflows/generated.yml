@@ -1,0 +1,36 @@
+# I-8: the committed dictionary, typed tags and UIDs match the generator's
+# output for the pinned DICOM release. Runs only when the generator or its
+# outputs change; the release XML is cached, keyed by the pin in source.dart.
+name: generated
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - dartdicom/tool/gen_dictionary/**
+      - dartdicom/lib/**/*.g.dart
+      - .github/workflows/generated.yml
+  pull_request:
+    paths:
+      - dartdicom/tool/gen_dictionary/**
+      - dartdicom/lib/**/*.g.dart
+      - .github/workflows/generated.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dictionary:
+    name: generated dictionary is up to date (I-8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.1.1
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/dartdicom/dicom-standard
+          key: dicom-standard-${{ hashFiles('dartdicom/tool/gen_dictionary/source.dart') }}
+      - run: dart pub get
+      - run: dart run tool/gen_dictionary/main.dart --check
+        working-directory: dartdicom

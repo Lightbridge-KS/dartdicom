@@ -38,15 +38,11 @@ M1 builds the thinnest end-to-end slice through every package the first consumer
 - [x] `.gitignore` includes `.vscode/settings.json` (it holds a home path) (`285623d`)
 - [x] Root workspace `pubspec.yaml` with members listed explicitly; shared `analysis_options.yaml` (strict modes, `unawaited_futures`, `_playground/` excluded) (`285623d`)
 - [x] Scaffold the four packages and `examples/` with `dart create -t package`; reworked to version `0.1.0-dev.1`, floor `^3.6.0`, `resolution: workspace`. Core seed: `Tag` (C-01) plus architecture tests (I-1, I-5, I-7, I-22, no `print`) (`285623d`)
-- [ ] Dictionary generator: pinned DICOM release, PS3.6 + PS3.7 XML → committed `*.g.dart`, cross-checked against pydicom's dictionary. It emits typed tags (`One<T>` / `Many<T>`) from the data §3.4 table plus the dictionary VM (DA1).
-- [ ] Fixture tooling (blueprint §3):
-  - `tool/make_fixtures.py`: a synthetic scenario generator, written from scratch
-  - `tool/fetch_corpus.py`: pydicom-data and public collections, fetched on demand and never committed
-  - golden JSON export
-  - `fixtures/PROVENANCE.md`
-- [x] Dry-gate CI (`ci.yml`): a pinned job (mise) runs `tool/dry_gates.sh` with Chrome, and a floor job (Dart 3.6.0) runs analyze and VM tests. Green on the first GitHub run (`285623d`): Chrome tests, Wasm, strict publish dry-run; floor on Dart 3.6.0 with lints 5.1.1
+- [ ] Dictionary generator (`dartdicom/tool/gen_dictionary/`): DICOM **2026d** pinned by SHA-256 → committed `dictionary.g.dart` (5,355 entries), `tags.g.dart` (5,257 typed constants + 71 repeating-group functions), `uids.g.dart` (468 UIDs, `SopClasses.storage`). I-8 check in `generated.yml`; I-19 and I-26 tests. Cross-checked against pydicom 3.0.2 (DICOM 2024c): 176 newer entries, none missing, 4 field differences, all standard changes. Verified 2026-10-17; ticked with its SHA when committed
+- [ ] Fixture tooling (blueprint §3): `fixtures/` is a uv project with a typer CLI, `fixtures` (`build`, `golden`, `check`, `list`, `corpus fetch|where`, `pydicom-dictionary`). Data in `fixtures/data/`: 13 synthetic scenarios + 14 pydicom copies, all byte-reproducible; pydicom's golden reading of all 27; generated `PROVENANCE.md`. Corpora: pydicom-data @ `abc42b9` in the cache. Checked by ruff, pyright, pytest and `fixtures check` (I-28) through `scripts/check_fixtures.sh`, in the dry gates and CI. DCMTK reads all 13 synthetic files. Verified 2026-10-17; ticked with its SHA when committed
+- [x] Dry-gate CI (`ci.yml`): a pinned job (mise) runs `scripts/dry_gates.sh` with Chrome, and a floor job (Dart 3.6.0) runs analyze and VM tests. Green on the first GitHub run (`285623d`): Chrome tests, Wasm, strict publish dry-run; floor on Dart 3.6.0 with lints 5.1.1
 - [x] `.pre-commit-config.yaml` (pre-commit-hooks v6.0.0 hygiene set, `dart format`, gitleaks); `prek run --all-files` passes; the hook is installed with `prek install` (`285623d`)
-- [x] Root `justfile` fronting `tool/` (`dry`, `test`, `test-web`, `floor`, `hooks`, `pacs-up` / `pacs-echo` / `pacs-down`), plus `tool/floor_check.sh`, which reads the floor SDK from `ci.yml`. Verified: `just deps`, `fmt-check`, `floor` (Dart 3.6.0) and the PACS recipes
+- [x] Root `justfile` fronting `scripts/` (renamed from `tool/` 2026-10-17) (`dry`, `test`, `test-web`, `floor`, `hooks`, `pacs-up` / `pacs-echo` / `pacs-down`), plus `scripts/floor_check.sh`, which reads the floor SDK from `ci.yml`. Verified: `just deps`, `fmt-check`, `floor` (Dart 3.6.0) and the PACS recipes
 - [x] `docker/compose.yaml`: stock Orthanc 26.9.1 (DICOMweb, find/get allowed, `DARTDICOM` registered as the C-MOVE destination). Default ports 14242 (DIMSE), 18042 (HTTP) and 14112 (C-MOVE destination), each overridable. Verified side by side with another local PACS on 4242/8042: REST, `/dicom-web/studies` 200, C-ECHO. DCMTK comes from the host or runner, not a container (`285623d`)
 
 **Exit:** CI is green, the dictionary is generated from the pinned release, and `dart pub publish --dry-run` passes for every package.
@@ -114,10 +110,13 @@ These run in order of demand:
 ## Open questions
 
 - **Before 1.0:** does PN become `PersonName`, and do DA/TM/DT become date types (C-15)? Typed tags fix each VR's Dart type in every generated constant, so this is free only before 1.0 (data §8).
-- **M0:** where does the fetched-corpus cache live: a gitignored folder in the repo, or the user's cache directory (data §8)?
-- **M0:** which DICOM release does the dictionary pin to, and how often is it refreshed?
-- **M0:** which pydicom-data files (MIT) are small and clean enough to commit as curated fixtures? Each file's upstream provenance must be checked.
 - **M1 / M3:** which PACS products must the first consumer support, and do they support C-GET? The answer settles whether the tracer and the default retrieve path use C-GET or C-MOVE.
+
+**Answered 2026-10-17** (recorded in blueprint §3):
+
+- **Dictionary release:** DICOM **2026d**, pinned by SHA-256. The generator tries the release URL first, then `current`, and refuses a checksum mismatch. Refresh: bump `release` and the checksums in `tool/gen_dictionary/source.dart`, then run `just dict`.
+- **Corpus cache:** the user cache (`$DARTDICOM_CACHE`, else `$XDG_CACHE_HOME/dartdicom`, else `~/.cache/dartdicom`), never inside the repo.
+- **Curated fixtures:** 14 small files from pydicom's bundled test data, copied from the pinned pydicom 3.0.2 wheel. pydicom-data stays in the cache at commit `abc42b9`.
 
 ## Confirmed contracts
 
@@ -133,6 +132,10 @@ These run in order of demand:
 | mise: in the repo, `dart` resolves to 3.13.5 in both kinds of login shell; outside it, the shim falls back to the next `dart` on `PATH` (e.g. a Flutter SDK's). A shim resolves to the `mise` binary, not into an SDK, so Dart-Code needs `dart.sdkPath`. | local check, 2026-10-16 |
 | An extension type that doesn't implement `Object` isn't assignable to `Object` (it is potentially nullable), so `Tag` declares `implements Object` (but not `int`) | compile error in `tag_test.dart`, Dart 3.13.5, 2026-10-16 |
 | The 3.6 floor resolves with `lints: ">=5.1.0 <7.0.0"` → 5.1.1 and `test: ^1.25.0` → 1.26.3, provided no lockfile is committed | local floor run, Dart 3.6.0, 2026-10-16 |
+| `package:test` exports a class named `Tags` (for `@Tags`), so a test importing both it and a library exporting `Tags` gets `ambiguous_import` | `dart analyze`, 2026-10-17 (surface S6) |
+| Typed tags tree-shake: a web program using three tags and a UID compiles to 33 KB, the same as the baseline example; 5,254 unused constants cost nothing | `dart compile js -O2`, Dart 3.13.5, 2026-10-17 |
+| pydicom's `generate_uid(prefix=None, entropy_srcs=…)` is random (UUID4) whatever the entropy sources; deterministic fixtures use their own `2.25.` + UUID v5 | fixture reproducibility check, 2026-10-17 |
+| NEMA serves the newest release only under `/current/`; a release gets its own URL once superseded (e.g. 2026c) | HTTP probes, 2026-10-17 |
 | A sealed class's subtypes must be in its own library (`invalid_use_of_type`); an open `abstract base` class with a sealed subtree per package works, and stays exhaustive | `dart analyze`, Dart 3.13.5, 2026-10-16 |
 | Typed tag constants (`extension type const One<T>(int)` / `Many<T>`) cost nothing at runtime; their value types are inferred; misuse is a compile error; they build on the VM, dart2js and dart2wasm | local spike, Dart 3.8.1, 2026-10-16 |
 
@@ -148,4 +151,4 @@ These run in order of demand:
 | 64-bit values are wrong in browsers | `BigInt` for SV and UV; chrome CI (I-2) |
 | CI time grows | Path filters; interop runs as a nightly or manual live gate |
 | Someone takes the package names | Names were confirmed free on 2026-10-16; publish `0.1.0-dev.1` once M1 passes |
-| Binary fixtures bloat the repo | A small curated set; larger corpora are downloaded by `tool/` scripts |
+| Binary fixtures bloat the repo | A small curated set; larger corpora are fetched into the cache by `fixtures corpus fetch` |

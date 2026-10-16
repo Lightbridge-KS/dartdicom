@@ -63,7 +63,7 @@ flowchart LR
 | Browser `Blob` / bytes | caller memory | single instances | — | `DicomFile.fromBytes`; prefix fetch (D1) |
 | Caller sink | caller-owned, `InstanceSink` | received instances | net (N-11) | the caller's app |
 | Trace sink | caller-owned, `TraceSink` | protocol trace | net (N-14), redacted | the developer |
-| Reference tables | `*.g.dart`, shipped inside the package | tag → VR, VM, keyword, name, retired; UID registry | `tool/gen_dictionary` (build time) | parser, writer, keyword lookup |
+| Reference tables | `*.g.dart`, shipped inside the package | tag → VR, VM, keyword, name, retired; UID registry | `dartdicom/tool/gen_dictionary` (build time) | parser, writer, keyword lookup |
 
 The library writes nothing anywhere else: no cache directory, no temp files, no global state (PRD constraints).
 
@@ -145,20 +145,20 @@ This mapping is the library's real "schema". It is **public API**: changing a ro
 - a value the declared charset can't encode
 - non-ASCII text when no charset is declared
 
-The message names the tag and says how to fix it: *set `Tags.specificCharacterSet` to `'ISO_IR 192'`*. The writer never adds or changes (0008,0005) on its own; reading is lenient, writing is strict. *(amended: [blueprint F35](../structure/01-codebase-blueprint.md#1-reconciliation-findings))*
+The message names the tag and says how to fix it: *set `DicomTags.specificCharacterSet` to `'ISO_IR 192'`*. The writer never adds or changes (0008,0005) on its own; reading is lenient, writing is strict. *(amended: [blueprint F35](../structure/01-codebase-blueprint.md#1-reconciliation-findings))*
 
 **Multiplicity: typed tags (DA1, decided 2026-10-16).** The generator turns each dictionary entry's VM into the constant's *type*:
 
 | Dictionary VM | Generated constant | Read | Returns |
 |---|---|---|---|
-| `1` | `One<T>`, e.g. `Tags.patientName` is `One<String>` | `ds.get(tag)` / `ds.require(tag)` | `T?` / `T` (throws a missing-element error naming the tag, C-06) |
-| anything else (`1-n`, `2`, `2-n`, `3`, …) | `Many<T>`, e.g. `Tags.windowCenter` is `Many<double>` | `ds.getAll(tag)` | `List<T>` (empty if absent) |
+| `1` | `One<T>`, e.g. `DicomTags.patientName` is `One<String>` | `ds.get(tag)` / `ds.require(tag)` | `T?` / `T` (throws a missing-element error naming the tag, C-06) |
+| anything else (`1-n`, `2`, `2-n`, `3`, …) | `Many<T>`, e.g. `DicomTags.windowCenter` is `Many<double>` | `ds.getAll(tag)` | `List<T>` (empty if absent) |
 | no dictionary type (private tags, keyword-string lookups) | plain `Tag` | list-only getters per family (`getStrings`, `getInts`, …) | `List<…>`: nothing is truncated, nothing throws |
 
 - **The guard is the compiler.** A singular read of a `Many` tag, a list read of a `One` tag, or the wrong value type is a compile error. `One` and `Many` are `extension type`s over `int`, so they cost nothing at runtime (spike, 2026-10-16).
 - **Data that contradicts the dictionary** (a VM `1` element holding 2 values, written by a non-conformant tool) is a data error, not a caller error. `get` returns the first value *and* records a C-10 repair in the `ReadReport`.
 - **VR alternatives with different Dart types** (e.g. LUT Data, `US or OW`) generate a plain `Tag`. They are read with the family getters after checking the element's VR. Alternatives with the same Dart type (`US or SS` → `int`, `OB or OW` → `Uint8List`) are typed normally.
-- **Repeating groups** (`50xx`, `60xx`) are generated as functions that take the group and return a typed tag, e.g. `Tags.overlayData(0x6002)`.
+- **Repeating groups** (`50xx`, `60xx`) are generated as functions that take the group and return a typed tag, e.g. `DicomTags.overlayData(0x6002)`.
 - Rejected: (A) returning the first value with an `index:` argument, which truncates silently; and (B) throwing at runtime, which fails late on some scanners' data.
 
 ### 3.5 Physical: the encodings
@@ -259,12 +259,12 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    nema[("DICOM standard, pinned release: PS3.6 + PS3.7 XML")] --> gen["tool/gen_dictionary"]
+    nema[("DICOM standard, pinned release: PS3.6 + PS3.7 XML")] --> gen["dartdicom/tool/gen_dictionary"]
     gen --> g["*.g.dart (committed, shipped)"]
     pyd[("pydicom dictionary")] -. "cross-check only" .-> gen
-    scen["named scenarios"] --> mk["tool/make_fixtures.py (pydicom)"]
-    corp[("pydicom-data (MIT) + public collections")] --> fetch["tool/fetch_corpus.py"]
-    mk --> fx["fixtures/ (small, committed) + PROVENANCE.md"]
+    scen["named scenarios"] --> mk["fixtures build (pydicom)"]
+    corp[("pydicom-data (MIT) + public collections")] --> fetch["fixtures corpus fetch"]
+    mk --> fx["fixtures/data/ (small, committed) + PROVENANCE.md"]
     fetch --> cache["local cache (gitignored)"]
     fx --> gold["golden JSON + pixel sha256 (pydicom export)"]
     cache --> gold
@@ -286,7 +286,7 @@ flowchart LR
 | Dictionary | the DICOM standard (pinned release) | generated `*.g.dart` | Regenerated, never edited by hand (I-8) |
 | Private dictionary entries | the caller, per read | — | Never global (F11) |
 | PixelArray, DisplayBuffer | Pixel Data plus the pixel module attributes | — | Derived and never written back |
-| Golden expectations | pydicom (the oracle), run over the fixtures | committed golden JSON | Regenerated by `tool/` |
+| Golden expectations | pydicom (the oracle), run over the fixtures | committed golden JSON | Regenerated by `fixtures golden` |
 
 ## 6. Storage and access
 

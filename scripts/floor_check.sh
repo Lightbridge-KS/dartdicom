@@ -19,5 +19,5 @@ mise exec "dart@$sdk" -- bash -euo pipefail -c '
   dart --version
   dart pub get >/dev/null
   dart analyze --fatal-infos
-  tool/test_all.sh
+  scripts/test_all.sh
 '

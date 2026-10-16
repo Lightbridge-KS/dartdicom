@@ -11,3 +11,9 @@ CLAUDE.local.md
 # Holds a machine path (dart.sdkPath to the mise install)
 .vscode/settings.json
 .DS_Store
+
+# Python (the fixtures package)
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/

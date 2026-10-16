@@ -20,7 +20,7 @@ bool _isNativeAdapter(File f) =>
 /// Top-level mutable state: `var`/`late`/non-const `final`, or a typed
 /// declaration with an initializer, starting at column 0 (I-7).
 final _topLevelMutable = RegExp(
-  r'^(?:(?:var|late|final)\s|(?!const\b|return\b|typedef\b)[A-Za-z_][\w<>?, ]*\s+[a-z_]\w*\s*=)',
+  r'^(?:(?:var|late)\s|final\s(?!class\b)|(?!const\b|return\b|typedef\b)[A-Za-z_][\w<>?, ]*\s+[a-z_]\w*\s*=)',
 );
 
 List<String> _offenders(Iterable<File> files, RegExp pattern) => [
@@ -57,6 +57,8 @@ void main() {
       'int f() => 1;',
       'typedef F = int;',
       'extension type const Tag(int value) {',
+      'final class Sequence {',
+      'abstract final class Tags {',
     ]) {
       expect(_topLevelMutable.hasMatch(ok), isFalse, reason: ok);
     }

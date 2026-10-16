@@ -17,13 +17,14 @@ Pure-Dart DICOM packages in one pub workspace: `dartdicom` (core), `dartdicom_pi
 
 ## Commands
 
-The root `justfile` is the front door; `just --list` shows every recipe. Recipes call `tool/*.sh`, and CI calls those scripts directly.
+The root `justfile` is the front door; `just --list` shows every recipe. Recipes call `scripts/*.sh`, and CI calls those scripts directly.
 
 - `just dry`: the dry gates (format, analyze, dependency rules, VM and web tests, the Wasm compile, publish dry-runs). Use `just dry chrome` for browser tests.
 - `just floor`: replays the CI floor job (Dart 3.6) on a temporary copy of the tree.
 - `just test` / `just test-web` / `just analyze` / `just fmt` / `just hooks`.
 - `just pacs-up` / `pacs-echo` / `pacs-down`: the Orthanc test PACS (DIMSE 14242, HTTP 18042).
-- Add a new workflow as a `tool/` script plus a recipe, not as a long recipe body.
+- `just fixtures` / `just fixtures-check`: regenerate or verify the test data (`fixtures/`, a uv project with a `fixtures` CLI).
+- Add a new workflow as a `scripts/` script plus a recipe, not as a long recipe body.
 
 ## Rules
 

@@ -22,7 +22,8 @@ Not a medical device; not for diagnostic use.
   - `just test`: tests
   - `just floor`: the Dart 3.6 floor check
   - `just pacs-up`: start the test PACS
-- **Without `just`:** each recipe calls a script in [`tool/`](tool/), which runs on its own (`tool/dry_gates.sh`, `tool/test_all.sh`, …). CI uses the scripts directly.
+- **Without `just`:** each recipe calls a script in [`scripts/`](scripts/), which runs on its own (`scripts/dry_gates.sh`, `scripts/test_all.sh`, …). CI uses the scripts directly.
+- **Test data:** [`fixtures/`](fixtures/) is a small uv project with a `fixtures` CLI (`just fixtures`, `just fixtures-check`); see its README.
 
 ## License
 

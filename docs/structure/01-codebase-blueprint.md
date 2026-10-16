@@ -56,7 +56,7 @@ These are the places where two inputs disagree, or where a single input disagree
 | F23 | Data §5 (file meta is always derived; SOP UIDs and transfer syntax exist twice) **×** C-07, which has no check | I-17: writer tests for conflicting UIDs and for the transfer syntax written into the meta. |
 | F24 | Data §3.4 (DS and IS keep their text) **×** writing *modified* values: DS is limited to 16 bytes and IS to 12 | Formatting lands in `vr/`; I-23 is a property test. |
 | F25 | Data §4.2 (store as received) **×** a crash in the middle of a write, which would leave a truncated `.dcm` that looks complete | `DirectorySink` writes `<name>.part` in the target directory, then renames it. I-20 checks that the stored bytes equal the received bytes. |
-| F26 | Data §4.4 (`tool/fetch_corpus.py` and a corpus cache) **×** §3 tree | The tree gains `fetch_corpus.py`. Where the cache lives is still open (data §8). |
+| F26 | Data §4.4 (fetching corpora into a cache, now `fixtures corpus fetch`) **×** §3 tree | The corpus fetcher lands in the fixtures CLI (`fixtures corpus fetch`). Where the cache lives is still open (data §8). |
 | F27 | Data DA1 (typed tags, **decided 2026-10-16**) **×** design D2 (typed getters) and PRD C-03 (generated constants) | The generator emits `One<T>` / `Many<T>` from the data §3.4 table plus the dictionary VM. `Dataset` reads become `get` / `require` / `getAll`, plus list-only getters for untyped tags. A VR with alternatives of different Dart types gets a plain `Tag`. I-24 checks that misuse doesn't compile. *(Design D2 and PRD C-03 amended.)* |
 
 **Reconciliation with the surface architecture (2026-10-16).** One more Dart fact was checked for these, on 3.13.5: a sealed class cannot be extended from another library.
@@ -70,8 +70,9 @@ These are the places where two inputs disagree, or where a single input disagree
 | F32 | Surface S4 (keyword → identifier; the generator fails on a collision) **×** §8, which had no check | `gen_dictionary/naming.dart` holds the rule. I-26 is a golden test of the edge cases plus a collision check. |
 | F33 | Surface S5 (a final Failure is a stream error) **×** design D3 (status as a value) | D3 is refined, not reversed. `DimseFailureException` joins net's sealed tree, and `RetrieveProgress.status` carries the final status. *(Design §5.2 and D3 amended.)* |
 | F34 | Surface §6.4 (`examples/` as runnable docs against the test PACS) **×** §9, where the live gates didn't run them | `interop.yml` also runs `examples/`. |
-| F35 | Surface §4.2 (`Dataset()` built in memory and filled with `set`) **×** data §3.4 (charset rules cover *decoding* only) | **Decided 2026-10-16: the write fails.** Text that the dataset's declared charset can't encode, or non-ASCII text with no (0008,0005) at all, raises a `DicomWriteException`. The message names the tag and says how to fix it (`set Tags.specificCharacterSet to 'ISO_IR 192'`). Nothing is added silently. This lands in `write/`, and I-27 checks it. *(Data §3.4 amended.)* |
-| F36 | Surface §2 (family list getters such as `getInts(Tag)` for untyped tags) **×** DA1: `One` and `Many` implement `Tag`, so `getInts(Tags.patientName)` compiles | Accepted, because a subtype can't be excluded. At runtime it throws an `ArgumentError` naming the tag's typed accessor (`use ds.get(Tags.patientName)`). |
+| F35 | Surface §4.2 (`Dataset()` built in memory and filled with `set`) **×** data §3.4 (charset rules cover *decoding* only) | **Decided 2026-10-16: the write fails.** Text that the dataset's declared charset can't encode, or non-ASCII text with no (0008,0005) at all, raises a `DicomWriteException`. The message names the tag and says how to fix it (`set DicomTags.specificCharacterSet to 'ISO_IR 192'`). Nothing is added silently. This lands in `write/`, and I-27 checks it. *(Data §3.4 amended.)* |
+| F36 | Surface §2 (family list getters such as `getInts(Tag)` for untyped tags) **×** DA1: `One` and `Many` implement `Tag`, so `getInts(DicomTags.patientName)` compiles | Accepted, because a subtype can't be excluded. At runtime it throws an `ArgumentError` naming the tag's typed accessor (`use ds.get(DicomTags.patientName)`). |
+| F37 | PRD C-03 (generated constants named `Tags`) **×** `package:test`, which also exports `Tags` (found in M0: `ambiguous_import` in any test importing both) | Renamed to `DicomTags` (surface S6). The generator emits `abstract final class DicomTags`. *(PRD C-03, design and surface examples amended.)* |
 
 **Verb → action → field.** Each verb the first consumer needs, traced to the action that performs it and the field it lands on:
 
@@ -111,13 +112,13 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 ├── README.md                     ecosystem overview, package table, and the pydicom → dartdicom mapping
 ├── llms.txt                      index for agents: links to each package's llms.txt (F31)
 ├── AGENTS.md  (CLAUDE.md → AGENTS.md)
-├── justfile                      the front door: one recipe per workflow (dry, test, floor, pacs-up, …); recipes call tool/
+├── justfile                      the front door: one recipe per workflow (dry, test, floor, pacs-up, …); recipes call scripts/
 ├── .pre-commit-config.yaml       fast subset: dart format, gitleaks, pre-commit-hooks
 ├── .github/workflows/            ci.yml (dry gates) · interop.yml (live gates) · publish.yml
 ├── dartdicom/                    core package
 │   ├── lib/dartdicom.dart        the only pure public library
 │   ├── lib/io.dart               native adapter entry point: File.readAsDicom/Sync, writeAsDicom/Sync, FileSource
-│   ├── lib/src/tag/              Tag, One<T>, Many<T>; Tags (generated, typed: DA1)
+│   ├── lib/src/tag/              Tag, One<T>, Many<T>; DicomTags (generated, typed: DA1; named by S6)
 │   ├── lib/src/dictionary/       Dictionary value; generated tables
 │   ├── lib/src/uid/              Uid, UID generation; TransferSyntax descriptors; SopClasses (generated)
 │   ├── lib/src/vr/               Vr enum; per-VR converters and writers
@@ -128,7 +129,7 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 │   ├── lib/src/write/            Writer, WriteOptions, file meta generation
 │   ├── lib/src/redact/           Redactor; dump
 │   ├── lib/src/io/               FileSource, ZLibDeflateCodec: the only dart:io in this package
-│   ├── tool/gen_dictionary/      PS3.6 + PS3.7 XML → lib/src/**/*.g.dart (committed); naming.dart = keyword → identifier (S4)
+│   ├── tool/gen_dictionary/      source.dart (release pin + SHA-256) · parse.dart · emit.dart · value_types.dart (I-19) · naming.dart (S4) → lib/src/**/*.g.dart (committed)
 │   ├── test/                     includes architecture_test.dart, vs_pydicom_test.dart and compile_fail/ (I-24)
 │   └── example/  README.md  llms.txt  CHANGELOG.md  LICENSE  pubspec.yaml
 ├── dartdicom_pixel/lib/src/      pixel_array/ · decode/ · lut/ · display/ · codec/
@@ -136,8 +137,9 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 │                                 every package root also has README.md (with the pydicom mapping) and llms.txt (F31)
 ├── dartdicom_web/lib/src/        client/ · qido/ · wado/ · stow/ · multipart/ · auth/
 ├── examples/                     workspace member, publish_to: none; depends on all packages; runnable end-to-end demos
-├── fixtures/                     small curated .dcm files and golden JSON; PROVENANCE.md
-├── tool/                         dry_gates.sh · test_all.sh · check_deps.sh · floor_check.sh (bash + yq; CI calls these directly, so it needs no just); uv scripts from M0: make_fixtures.py, fetch_corpus.py, make_golden.py
+├── fixtures/                     uv project (Python ≥ 3.13): `fixtures` CLI (typer) · src/dartdicom_fixtures/ · tests/ (pytest) · uv.lock
+│   └── data/                     committed artifacts only: synthetic/ · pydicom/ · golden/ · PROVENANCE.md (all generated)
+├── scripts/                      dry_gates.sh · test_all.sh · check_deps.sh · floor_check.sh · check_fixtures.sh (bash; CI calls these, so it needs no just)
 ├── docker/compose.yaml           stock Orthanc (DIMSE + DICOMweb): the minimal test PACS; host ports overridable
 └── docs/                         req/ · design/ · structure/ · progress/
 ```
@@ -148,13 +150,15 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
   - Outside the repo, the shim falls back to the next `dart` on `PATH`.
   - Dart-Code can't follow a shim back to an SDK, so a gitignored `.vscode/settings.json` sets `dart.sdkPath` to the mise install.
   - Contributors without mise use any Dart at or above the floor.
-  - **Task runner:** the root `justfile` fronts the `tool/` scripts, which stay the implementation. CI and contributors without `just` run the scripts directly.
+  - **Task runner:** the root `justfile` fronts `scripts/`, which stay the implementation. CI and contributors without `just` run the scripts directly.
   - Rejected: FVM (it manages Flutter SDKs), and mise tasks (they would be a second task runner next to `just`).
 - `examples/` is the only place where several packages meet. The packages themselves never depend on each other.
 - **Fixtures (decided 2026-10-16):** small curated files are committed directly under a size budget, with no Git LFS. They come from three places:
-  - **Synthetic.** `tool/make_fixtures.py` (uv + pydicom) generates them from named scenarios: MONOCHROME1, signed HU vs unsigned pixels with `RescaleIntercept −1024`, a missing `StudyDate`, multi-frame, a localizer inside an axial stack, and so on. The script is written from scratch; no existing generator is ported.
-  - **Real-world.** `tool/fetch_corpus.py` fetches pydicom-data (MIT) and public collections on demand. They are never committed, and each file's provenance is recorded in `fixtures/PROVENANCE.md`.
-  - **Golden.** JSON and pixel hashes exported from pydicom, for I-11.
+  - **Synthetic.** `fixtures build` (pydicom, pinned in `fixtures/uv.lock`) builds 13 named scenarios from scratch into `fixtures/data/synthetic/`: signed HU vs unsigned + `RescaleIntercept −1024`, Implicit, Deflated and Big Endian variants, MONOCHROME1, multi-frame, RGB, Latin-1 and UTF-8 names, a missing `StudyDate`, undefined-length sequences, private tags. UIDs are name-based (`2.25.` + UUID v5) and dates fixed, so a re-run reproduces every byte.
+  - **Curated copies.** 14 small files from pydicom's own bundled test data (MIT), copied from the pinned pydicom wheel into `fixtures/data/pydicom/`.
+  - **Real-world corpora.** `fixtures corpus fetch` checks out pydicom-data at a pinned commit (and later public collections) into the user cache (`$DARTDICOM_CACHE`, else `$XDG_CACHE_HOME/dartdicom`, else `~/.cache/dartdicom`). Never committed.
+  - **Golden.** `fixtures golden` exports pydicom's reading of every fixture (elements, recursively, plus pixel shape, dtype and SHA-256) into `fixtures/data/golden/`, for I-11.
+  - `fixtures/data/PROVENANCE.md` is generated with each file's source and checksum. `fixtures check` rebuilds everything into a temporary directory and fails on any difference or extra file (I-28). The package is a uv project (`fixtures/`), checked by ruff, pyright and pytest through `scripts/check_fixtures.sh`.
 
   Rejected: Git LFS, and a separate fixtures repo.
 - **Test PACS for the live gates:** any Orthanc-based PACS, chosen by environment variables (host, port, called AE title, and the app's own AE and port for C-MOVE). `docker/compose.yaml` is the minimal default. A richer external test PACS with a curated, messier corpus can stand in without changing any code.
@@ -190,7 +194,7 @@ Two rules *inside* packages:
 
 | Rule | Tool |
 |---|---|
-| package-level dependencies | `tool/check_deps` (yq over every `pubspec.yaml`) in CI, plus the `depend_on_referenced_packages` lint |
+| package-level dependencies | `scripts/check_deps.sh` (yq over every `pubspec.yaml`) in CI, plus the `depend_on_referenced_packages` lint |
 | no platform imports in core | `dartdicom/test/architecture_test.dart` scans `lib/` for `dart:io`, `dart:ffi`, `dart:html`, `dart:js_interop` and `package:flutter`, excluding `io.dart` and `src/io/` |
 | web compatibility, end to end | `dart test -p chrome` and a `dart compile wasm` check fail if `dart:io` leaks into the web build |
 | net's layering | `dartdicom_net/test/architecture_test.dart` |
@@ -229,7 +233,8 @@ Interfaces exist only at real seams, and each has at least two implementations.
 
 | Task | File (one obvious place) |
 |---|---|
-| Add a developer workflow | a `tool/` script, plus a `justfile` recipe that calls it |
+| Add a developer workflow | a `scripts/` script, plus a `justfile` recipe that calls it |
+| Add a synthetic fixture scenario | a `@scenario` function in `fixtures/src/dartdicom_fixtures/scenarios.py`, then `just fixtures` |
 | Bump the dev Dart SDK | `mise use dart@<version>` (rewrites `mise.toml`), plus the local `.vscode/settings.json` `dart.sdkPath` |
 | Raise the package floor | `environment: sdk:` in every member's `pubspec.yaml`, plus the CI floor job's version |
 | Refresh the dictionary to a new DICOM release | `dartdicom/tool/gen_dictionary/`, then regenerate `*.g.dart` |
@@ -273,16 +278,16 @@ Interfaces exist only at real seams, and each has at least two implementations.
 |---|---|---|
 | I-1 ★ | Core `lib/` imports no `dart:io`, `dart:ffi`, `dart:html`, `dart:js_interop` or Flutter (excluding `io.dart` and `src/io/`) | `dartdicom/test/architecture_test.dart` |
 | I-2 ★ | Core tests pass compiled to JS, and core compiles to Wasm | CI `dart test -p chrome`, `dart compile wasm` |
-| I-3 ★ | Each package's `dependencies` are within its row of §4 | `tool/check_deps` in CI |
+| I-3 ★ | Each package's `dependencies` are within its row of §4 | `scripts/check_deps.sh` in CI |
 | I-4 ★ | No import of an undeclared package | `depend_on_referenced_packages` lint |
 | I-5 ★ | `dataset/` imports nothing from `read/` or `write/` | architecture test |
 | I-6 ★ | In net, only `transport/`, `scp/` and `sink/` import `dart:io` | `dartdicom_net/test/architecture_test.dart` |
 | I-7 ★ | No top-level mutable variables (`var`, `late`, non-const `final`) in any `lib/` | architecture test (grep) |
-| I-8 ★ | Generated files match the generator's output | CI regenerates, then `git diff --exit-code` |
+| I-8 ★ | Generated files match the generator's output for the pinned release | `dart run tool/gen_dictionary/main.dart --check` in `.github/workflows/generated.yml` (on generator or output changes; the release XML is cached) |
 | I-9 ★ | Element values never appear in exception messages, the default `toString`, trace output, or the `ReadReport` | PHI canary test: fixtures carry sentinel values; the test triggers errors and traces and asserts the sentinels are absent |
 | I-10 ★ | Reading then writing an untouched file in the same transfer syntax gives byte-identical output | golden round-trip test |
-| I-11 ★ | Every element agrees with pydicom on the fixture corpus | `vs_pydicom_test.dart` against `tool/make_fixtures.py` output |
-| I-12 ★ | PDUs and command sets are byte-identical to pynetdicom's encoders | net golden test against `tool/make_golden.py` output |
+| I-11 ★ | Every element agrees with pydicom on the fixture corpus | `vs_pydicom_test.dart` against `fixtures/data/golden/` |
+| I-12 ★ | PDUs and command sets are byte-identical to pynetdicom's encoders | net golden test against pynetdicom-generated fixtures |
 | I-13 ★ | The state table defines every (event, state) pair of PS3.8 Table 9-10 (19 × 13) | state-machine test |
 | I-14 ★ | A lazily read `Dataset` with deferred values can be sent to another isolate | isolate test (F2) |
 | I-15 ★ | `dart format` is clean and `dart analyze --fatal-infos` passes | CI and pre-commit |
@@ -295,9 +300,10 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-22 ★ | No `lib/` uses temp-file or cache APIs (`Directory.systemTemp`, `createTemp`) | architecture test (grep) (F21) |
 | I-23 ★ | Written DS values are ≤ 16 bytes and IS values ≤ 12 bytes | property test (F24) |
 | I-24 ★ | Typed-tag misuse doesn't compile: a `Many` tag to `get`, a `One` tag to `getAll`, or the wrong value type | a negative compile test: `dart analyze` on `test/compile_fail/` expects exactly these `argument_type_not_assignable` errors (F27) |
-| I-25 ★ | Every Dart snippet in the README and `llms.txt` files compiles against the current API | `tool/check_snippets` extracts the fenced Dart blocks and analyzes them in `examples/` (F31) |
+| I-25 ★ | Every Dart snippet in the README and `llms.txt` files compiles against the current API | `scripts/check_snippets` extracts the fenced Dart blocks and analyzes them in `examples/` (F31) |
 | I-26 ★ | Keyword → identifier: the golden edge cases hold (`SOPInstanceUID` → `sopInstanceUid`, digit runs, …), and no two keywords produce the same identifier | generator golden test plus collision check (F32) |
 | I-27 ★ | Writing text the declared charset can't encode, or non-ASCII text with no (0008,0005), fails with a `DicomWriteException` that names the tag and suggests the fix | writer test (F35) |
+| I-28 ★ | The committed fixtures, golden files and `PROVENANCE.md` reproduce exactly from the pinned tools | `fixtures check` via `scripts/check_fixtures.sh` (in the dry gates) |
 
 ## 9. CI and release
 

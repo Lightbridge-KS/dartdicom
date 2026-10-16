@@ -1,4 +1,4 @@
-# dartdicom: every workflow, in one place. Recipes front the tool/ scripts,
+# dartdicom: every workflow, in one place. Recipes front the scripts/,
 # which stay the implementation (CI calls them directly, so neither CI nor a
 # contributor without `just` needs it).
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -23,7 +23,7 @@ get:
 
 # The whole dry suite: format, analyze, deps, VM + web tests, Wasm, publish dry-run.
 dry web="node":
-    WEB_PLATFORM={{web}} tool/dry_gates.sh
+    WEB_PLATFORM={{web}} scripts/dry_gates.sh
 
 # Format every member in place.
 fmt:
@@ -39,19 +39,19 @@ analyze:
 
 # Package dependencies stay within the import matrix (I-3).
 deps:
-    tool/check_deps.sh
+    scripts/check_deps.sh
 
 # Tests on the VM, every member (extra args go to `dart test`).
 test *args:
-    tool/test_all.sh {{args}}
+    scripts/test_all.sh {{args}}
 
 # Tests compiled to the web (node or chrome), web-capable members only.
 test-web platform="node":
-    tool/test_all.sh -p {{platform}}
+    scripts/test_all.sh -p {{platform}}
 
 # Replay the CI floor job (Dart 3.6) on a temporary copy of the tree. Needs mise.
 floor:
-    tool/floor_check.sh
+    scripts/floor_check.sh
 
 # Run every pre-commit hook on every file.
 hooks:
@@ -76,3 +76,38 @@ pacs-echo:
 # Follow the test PACS logs.
 pacs-logs:
     {{compose}} logs -f
+
+# ── Data dictionary (generated from the pinned DICOM release) ─────────────────
+
+# Regenerate the dictionary, typed tags and UIDs (downloads the pinned XML once).
+dict:
+    cd dartdicom && dart run tool/gen_dictionary/main.dart
+
+# Fail if the committed generated files are stale (I-8).
+dict-check:
+    cd dartdicom && dart run tool/gen_dictionary/main.dart --check
+
+# Compare the generated dictionary with pydicom's (differences are reported).
+dict-crosscheck:
+    mkdir -p "${DARTDICOM_CACHE:-$HOME/.cache/dartdicom}"
+    cd fixtures && uv run --locked fixtures pydicom-dictionary --out "${DARTDICOM_CACHE:-$HOME/.cache/dartdicom}/pydicom-dictionary.json"
+    cd dartdicom && dart run tool/gen_dictionary/main.dart --check --crosscheck "${DARTDICOM_CACHE:-$HOME/.cache/dartdicom}/pydicom-dictionary.json"
+
+# ── Fixtures (fixtures/: a uv project with the `fixtures` CLI) ──────────────────
+
+# Regenerate the committed fixtures, PROVENANCE.md, and pydicom's golden JSON.
+fixtures:
+    cd fixtures && uv run --locked fixtures build
+    cd fixtures && uv run --locked fixtures golden
+
+# Lint, type-check and test the fixtures package; the data reproduces (I-28).
+fixtures-check:
+    scripts/check_fixtures.sh
+
+# List the synthetic scenarios and curated files.
+fixtures-list:
+    cd fixtures && uv run --locked fixtures list
+
+# Fetch the large corpora (pydicom-data, …) into the user cache.
+corpus:
+    cd fixtures && uv run --locked fixtures corpus fetch
