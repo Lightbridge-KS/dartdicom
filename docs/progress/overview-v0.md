@@ -10,14 +10,8 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M0 Foundation. All of these were settled on 2026-10-16:
-
-- design D1–D4
-- data DA1 (typed tags) and DA2 (throw on a changed source)
-- surface S1–S5 (write API, immutable AE, Dataset queries, Effective Dart identifiers, a final Failure as a stream error)
-- the blueprint forks
-- the fixture strategy
-**Next:** M1 Tracer bullet.
+**Now:** M1 Tracer bullet. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Next:** M2–M4, filling out core, net and pixel, in any order.
 
 ## Roadmap
 
@@ -38,8 +32,8 @@ M1 builds the thinnest end-to-end slice through every package the first consumer
 - [x] `.gitignore` includes `.vscode/settings.json` (it holds a home path) (`285623d`)
 - [x] Root workspace `pubspec.yaml` with members listed explicitly; shared `analysis_options.yaml` (strict modes, `unawaited_futures`, `_playground/` excluded) (`285623d`)
 - [x] Scaffold the four packages and `examples/` with `dart create -t package`; reworked to version `0.1.0-dev.1`, floor `^3.6.0`, `resolution: workspace`. Core seed: `Tag` (C-01) plus architecture tests (I-1, I-5, I-7, I-22, no `print`) (`285623d`)
-- [ ] Dictionary generator (`dartdicom/tool/gen_dictionary/`): DICOM **2026d** pinned by SHA-256 → committed `dictionary.g.dart` (5,355 entries), `tags.g.dart` (5,257 typed constants + 71 repeating-group functions), `uids.g.dart` (468 UIDs, `SopClasses.storage`). I-8 check in `generated.yml`; I-19 and I-26 tests. Cross-checked against pydicom 3.0.2 (DICOM 2024c): 176 newer entries, none missing, 4 field differences, all standard changes. Verified 2026-10-17; ticked with its SHA when committed
-- [ ] Fixture tooling (blueprint §3): `fixtures/` is a uv project with a typer CLI, `fixtures` (`build`, `golden`, `check`, `list`, `corpus fetch|where`, `pydicom-dictionary`). Data in `fixtures/data/`: 13 synthetic scenarios + 14 pydicom copies, all byte-reproducible; pydicom's golden reading of all 27; generated `PROVENANCE.md`. Corpora: pydicom-data @ `abc42b9` in the cache. Checked by ruff, pyright, pytest and `fixtures check` (I-28) through `scripts/check_fixtures.sh`, in the dry gates and CI. DCMTK reads all 13 synthetic files. Verified 2026-10-17; ticked with its SHA when committed
+- [x] Dictionary generator (`dartdicom/tool/gen_dictionary/`): DICOM **2026d** pinned by SHA-256 → committed `dictionary.g.dart` (5,355 entries), `tags.g.dart` (5,257 typed constants + 71 repeating-group functions), `uids.g.dart` (468 UIDs, `SopClasses.storage`). I-8 check in `generated.yml`; I-19 and I-26 tests. Cross-checked against pydicom 3.0.2 (DICOM 2024c): 176 newer entries, none missing, 4 field differences, all standard changes. Done 2026-10-17 (`bed879b`)
+- [x] Fixture tooling (blueprint §3): `fixtures/` is a uv project with a typer CLI, `fixtures` (`build`, `golden`, `check`, `list`, `corpus fetch|where`, `pydicom-dictionary`). Data in `fixtures/data/`: 13 synthetic scenarios + 14 pydicom copies, all byte-reproducible; pydicom's golden reading of all 27; generated `PROVENANCE.md`. Corpora: pydicom-data @ `abc42b9` in the cache. Checked by ruff, pyright, pytest and `fixtures check` (I-28) through `scripts/check_fixtures.sh`, in the dry gates and CI. DCMTK reads all 13 synthetic files. Done 2026-10-17 (`bed879b`)
 - [x] Dry-gate CI (`ci.yml`): a pinned job (mise) runs `scripts/dry_gates.sh` with Chrome, and a floor job (Dart 3.6.0) runs analyze and VM tests. Green on the first GitHub run (`285623d`): Chrome tests, Wasm, strict publish dry-run; floor on Dart 3.6.0 with lints 5.1.1
 - [x] `.pre-commit-config.yaml` (pre-commit-hooks v6.0.0 hygiene set, `dart format`, gitleaks); `prek run --all-files` passes; the hook is installed with `prek install` (`285623d`)
 - [x] Root `justfile` fronting `scripts/` (renamed from `tool/` 2026-10-17) (`dry`, `test`, `test-web`, `floor`, `hooks`, `pacs-up` / `pacs-echo` / `pacs-down`), plus `scripts/floor_check.sh`, which reads the floor SDK from `ci.yml`. Verified: `just deps`, `fmt-check`, `floor` (Dart 3.6.0) and the PACS recipes
