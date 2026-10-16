@@ -111,6 +111,7 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 ├── README.md                     ecosystem overview, package table, and the pydicom → dartdicom mapping
 ├── llms.txt                      index for agents: links to each package's llms.txt (F31)
 ├── AGENTS.md  (CLAUDE.md → AGENTS.md)
+├── justfile                      the front door: one recipe per workflow (dry, test, floor, pacs-up, …); recipes call tool/
 ├── .pre-commit-config.yaml       fast subset: dart format, gitleaks, pre-commit-hooks
 ├── .github/workflows/            ci.yml (dry gates) · interop.yml (live gates) · publish.yml
 ├── dartdicom/                    core package
@@ -136,7 +137,7 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 ├── dartdicom_web/lib/src/        client/ · qido/ · wado/ · stow/ · multipart/ · auth/
 ├── examples/                     workspace member, publish_to: none; depends on all packages; runnable end-to-end demos
 ├── fixtures/                     small curated .dcm files and golden JSON; PROVENANCE.md
-├── tool/                         dry_gates.sh · test_all.sh · check_deps.sh (bash + yq, no extra installs); uv scripts from M0: make_fixtures.py, fetch_corpus.py, make_golden.py
+├── tool/                         dry_gates.sh · test_all.sh · check_deps.sh · floor_check.sh (bash + yq; CI calls these directly, so it needs no just); uv scripts from M0: make_fixtures.py, fetch_corpus.py, make_golden.py
 ├── docker/compose.yaml           stock Orthanc (DIMSE + DICOMweb): the minimal test PACS; host ports overridable
 └── docs/                         req/ · design/ · structure/ · progress/
 ```
@@ -147,7 +148,8 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
   - Outside the repo, the shim falls back to the next `dart` on `PATH`.
   - Dart-Code can't follow a shim back to an SDK, so a gitignored `.vscode/settings.json` sets `dart.sdkPath` to the mise install.
   - Contributors without mise use any Dart at or above the floor.
-  - Rejected: FVM (it manages Flutter SDKs), and mise tasks (they would be a second task runner).
+  - **Task runner:** the root `justfile` fronts the `tool/` scripts, which stay the implementation. CI and contributors without `just` run the scripts directly.
+  - Rejected: FVM (it manages Flutter SDKs), and mise tasks (they would be a second task runner next to `just`).
 - `examples/` is the only place where several packages meet. The packages themselves never depend on each other.
 - **Fixtures (decided 2026-10-16):** small curated files are committed directly under a size budget, with no Git LFS. They come from three places:
   - **Synthetic.** `tool/make_fixtures.py` (uv + pydicom) generates them from named scenarios: MONOCHROME1, signed HU vs unsigned pixels with `RescaleIntercept −1024`, a missing `StudyDate`, multi-frame, a localizer inside an axial stack, and so on. The script is written from scratch; no existing generator is ported.
@@ -227,6 +229,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 
 | Task | File (one obvious place) |
 |---|---|
+| Add a developer workflow | a `tool/` script, plus a `justfile` recipe that calls it |
 | Bump the dev Dart SDK | `mise use dart@<version>` (rewrites `mise.toml`), plus the local `.vscode/settings.json` `dart.sdkPath` |
 | Raise the package floor | `environment: sdk:` in every member's `pubspec.yaml`, plus the CI floor job's version |
 | Refresh the dictionary to a new DICOM release | `dartdicom/tool/gen_dictionary/`, then regenerate `*.g.dart` |

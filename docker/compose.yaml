@@ -10,6 +10,8 @@
 #   18042  REST + /dicom-web/
 #   14112  the app's embedded Storage SCP, AE DARTDICOM (C-MOVE destination)
 # Each is still overridable, e.g. ORTHANC_DIMSE_PORT=24242.
+name: dartdicom
+
 services:
   orthanc:
     image: orthancteam/orthanc:26.9.1

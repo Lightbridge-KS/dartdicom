@@ -33,20 +33,21 @@ M1 builds the thinnest end-to-end slice through every package the first consumer
 
 ### M0 Foundation
 
-- [x] `git init`; `.gitignore` (`_playground/`, `.dart_tool/`, `build/`, `pubspec.lock`, local agent files); MIT `LICENSE` (root and each package); root `README.md`; `AGENTS.md`
-- [x] Pin the dev Dart SDK to 3.13.5 with mise (`mise.toml`), with shims activated in the login shell profile and Dart-Code pointed at the install (`.vscode/settings.json`, local only). Done 2026-10-16; commit SHA to follow `git init`.
-- [x] `.gitignore` includes `.vscode/settings.json` (it holds a home path)
-- [x] Root workspace `pubspec.yaml` with members listed explicitly; shared `analysis_options.yaml` (strict modes, `unawaited_futures`, `_playground/` excluded)
-- [x] Scaffold the four packages and `examples/` with `dart create -t package`; reworked to version `0.1.0-dev.1`, floor `^3.6.0`, `resolution: workspace`. Core seed: `Tag` (C-01) plus architecture tests (I-1, I-5, I-7, I-22, no `print`)
+- [x] `git init`; `.gitignore` (`_playground/`, `.dart_tool/`, `build/`, `pubspec.lock`, local agent files); MIT `LICENSE` (root and each package); root `README.md`; `AGENTS.md` (`285623d`)
+- [x] Pin the dev Dart SDK to 3.13.5 with mise (`mise.toml`), with shims activated in the login shell profile and Dart-Code pointed at the install (`.vscode/settings.json`, local only). Done 2026-10-16 (`285623d`).
+- [x] `.gitignore` includes `.vscode/settings.json` (it holds a home path) (`285623d`)
+- [x] Root workspace `pubspec.yaml` with members listed explicitly; shared `analysis_options.yaml` (strict modes, `unawaited_futures`, `_playground/` excluded) (`285623d`)
+- [x] Scaffold the four packages and `examples/` with `dart create -t package`; reworked to version `0.1.0-dev.1`, floor `^3.6.0`, `resolution: workspace`. Core seed: `Tag` (C-01) plus architecture tests (I-1, I-5, I-7, I-22, no `print`) (`285623d`)
 - [ ] Dictionary generator: pinned DICOM release, PS3.6 + PS3.7 XML → committed `*.g.dart`, cross-checked against pydicom's dictionary. It emits typed tags (`One<T>` / `Many<T>`) from the data §3.4 table plus the dictionary VM (DA1).
 - [ ] Fixture tooling (blueprint §3):
   - `tool/make_fixtures.py`: a synthetic scenario generator, written from scratch
   - `tool/fetch_corpus.py`: pydicom-data and public collections, fetched on demand and never committed
   - golden JSON export
   - `fixtures/PROVENANCE.md`
-- [ ] Dry-gate CI (`ci.yml`): a pinned job (mise) runs `tool/dry_gates.sh` with Chrome, and a floor job (Dart 3.6.0) runs analyze and VM tests. **Both run green locally** (floor: lints 5.1.1, test 1.26.3); the first CI run needs the GitHub repo
-- [x] `.pre-commit-config.yaml` (pre-commit-hooks v6.0.0 hygiene set, `dart format`, gitleaks); `prek run --all-files` passes. `prek install` not run yet
-- [x] `docker/compose.yaml`: stock Orthanc 26.9.1 (DICOMweb, find/get allowed, `DARTDICOM` registered as the C-MOVE destination). Default ports 14242 (DIMSE), 18042 (HTTP) and 14112 (C-MOVE destination), each overridable. Verified side by side with another local PACS on 4242/8042: REST, `/dicom-web/studies` 200, C-ECHO. DCMTK comes from the host or runner, not a container
+- [x] Dry-gate CI (`ci.yml`): a pinned job (mise) runs `tool/dry_gates.sh` with Chrome, and a floor job (Dart 3.6.0) runs analyze and VM tests. Green on the first GitHub run (`285623d`): Chrome tests, Wasm, strict publish dry-run; floor on Dart 3.6.0 with lints 5.1.1
+- [x] `.pre-commit-config.yaml` (pre-commit-hooks v6.0.0 hygiene set, `dart format`, gitleaks); `prek run --all-files` passes; the hook is installed with `prek install` (`285623d`)
+- [x] Root `justfile` fronting `tool/` (`dry`, `test`, `test-web`, `floor`, `hooks`, `pacs-up` / `pacs-echo` / `pacs-down`), plus `tool/floor_check.sh`, which reads the floor SDK from `ci.yml`. Verified: `just deps`, `fmt-check`, `floor` (Dart 3.6.0) and the PACS recipes
+- [x] `docker/compose.yaml`: stock Orthanc 26.9.1 (DICOMweb, find/get allowed, `DARTDICOM` registered as the C-MOVE destination). Default ports 14242 (DIMSE), 18042 (HTTP) and 14112 (C-MOVE destination), each overridable. Verified side by side with another local PACS on 4242/8042: REST, `/dicom-web/studies` 200, C-ECHO. DCMTK comes from the host or runner, not a container (`285623d`)
 
 **Exit:** CI is green, the dictionary is generated from the pinned release, and `dart pub publish --dry-run` passes for every package.
 

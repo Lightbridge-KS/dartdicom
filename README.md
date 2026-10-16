@@ -16,8 +16,13 @@ Not a medical device; not for diagnostic use.
 ## Development
 
 - **Dart:** any SDK at or above the package floor (`^3.6.0`). The dev toolchain is pinned in [`mise.toml`](mise.toml); run `mise install` if you use [mise](https://mise.jdx.dev).
-- **Workspace:** `dart pub get` at the repo root resolves every package.
-- **Dry gates:** `dart format --output=none --set-exit-if-changed .`, `dart analyze --fatal-infos`, `tool/check_deps.sh`, `tool/test_all.sh`.
+- **Workspace:** `dart pub get` (or `just get`) at the repo root resolves every package.
+- **Commands:** the root [`justfile`](justfile) lists every workflow (`just`, or `just --list`). The most used:
+  - `just dry`: the dry gate suite
+  - `just test`: tests
+  - `just floor`: the Dart 3.6 floor check
+  - `just pacs-up`: start the test PACS
+- **Without `just`:** each recipe calls a script in [`tool/`](tool/), which runs on its own (`tool/dry_gates.sh`, `tool/test_all.sh`, …). CI uses the scripts directly.
 
 ## License
 

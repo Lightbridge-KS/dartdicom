@@ -15,10 +15,15 @@ Pure-Dart DICOM packages in one pub workspace: `dartdicom` (core), `dartdicom_pi
 - `dart pub get` at the root resolves every member.
 - Code is at language version 3.6, so `dart format` uses the pre-3.7 style. Don't hand-format against it.
 
-## Gates
+## Commands
 
-- Dry: `tool/dry_gates.sh` runs format, analyze, dependency rules, VM and web tests, the Wasm compile and publish dry-runs. CI runs the same, plus a Dart 3.6 floor job.
-- Hooks: `prek run --all-files`.
+The root `justfile` is the front door; `just --list` shows every recipe. Recipes call `tool/*.sh`, and CI calls those scripts directly.
+
+- `just dry`: the dry gates (format, analyze, dependency rules, VM and web tests, the Wasm compile, publish dry-runs). Use `just dry chrome` for browser tests.
+- `just floor`: replays the CI floor job (Dart 3.6) on a temporary copy of the tree.
+- `just test` / `just test-web` / `just analyze` / `just fmt` / `just hooks`.
+- `just pacs-up` / `pacs-echo` / `pacs-down`: the Orthanc test PACS (DIMSE 14242, HTTP 18042).
+- Add a new workflow as a `tool/` script plus a recipe, not as a long recipe body.
 
 ## Rules
 
