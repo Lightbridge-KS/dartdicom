@@ -61,6 +61,42 @@ void main() {
     expect(series.first.get(DicomTags.seriesInstanceUid), isNotNull);
     await assoc.release();
   }, skip: _skip);
+
+  test('C-GET of a series into a DirectorySink', () async {
+    const ae = ApplicationEntity(
+        aeTitle: 'DARTDICOM',
+        requestedContexts: PresentationContexts.studyRootQueryRetrieve,
+        retrieveStorageClasses: PresentationContexts.commonStorage);
+    final assoc = await ae.associate(_host, _port, aeTitle: _aet);
+    final series = await assoc
+        .sendCFind(Dataset()
+          ..set(DicomTags.queryRetrieveLevel, 'SERIES')
+          ..setEmpty(DicomTags.studyInstanceUid)
+          ..setEmpty(DicomTags.seriesInstanceUid))
+        .toList();
+    expect(series, isNotEmpty, reason: 'seed the test PACS (just pacs-seed)');
+    final root = Directory.systemTemp.createTempSync('dartdicom_live_');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final sink = DirectorySink(root);
+    final progress = await assoc
+        .sendCGet(
+            Dataset()
+              ..set(DicomTags.queryRetrieveLevel, 'SERIES')
+              ..set(DicomTags.studyInstanceUid,
+                  series.first.require(DicomTags.studyInstanceUid))
+              ..set(DicomTags.seriesInstanceUid,
+                  series.first.require(DicomTags.seriesInstanceUid)),
+            sink)
+        .toList();
+    await assoc.release();
+    expect(progress.last.status, isA<DimseSuccess>());
+    expect(progress.last.failed, 0);
+    expect(sink.stored, hasLength(progress.last.completed));
+    expect(sink.stored, isNotEmpty);
+    final file = DicomFile.fromBytes(sink.stored.first.readAsBytesSync());
+    expect(file.dataset.get(DicomTags.seriesInstanceUid),
+        series.first.get(DicomTags.seriesInstanceUid));
+  }, skip: _skip);
 }
 
 /// Passes everything through and keeps the bytes received.

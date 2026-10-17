@@ -102,3 +102,16 @@ final class ScriptedPeer {
     await transport.close();
   }
 }
+
+/// An A-ASSOCIATE-AC accepting every context of [rq] with its first
+/// transfer syntax, but echoing no role selection items.
+AssociateAc acWithoutRoles(AssociateRq rq) => AssociateAc(
+      calledAeTitle: rq.calledAeTitle,
+      callingAeTitle: rq.callingAeTitle,
+      results: [
+        for (final c in rq.contexts)
+          ContextResult(c.id, 0, c.transferSyntaxes.first),
+      ],
+      userInformation: const UserInformation(
+          maxLength: 16384, implementationClassUid: '1.2.3.4'),
+    );

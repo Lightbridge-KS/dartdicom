@@ -68,4 +68,49 @@ abstract final class PresentationContexts {
     PresentationContext(
         SopClasses.patientRootQueryRetrieveInformationModelMove),
   ];
+
+  /// The common storage SOP classes, for
+  /// `ApplicationEntity.retrieveStorageClasses`: 36 classes covering CT, MR,
+  /// CR, DX, MG, intra-oral, US, secondary capture, XA, RF, breast
+  /// tomosynthesis, NM, PET, RT, SR, KOS, PDF, presentation states and
+  /// segmentations. `SopClasses.storage` (195) won't fit the 128-context
+  /// limit of an association.
+  static const commonStorage = <Uid>[
+    SopClasses.computedRadiographyImageStorage,
+    SopClasses.digitalXRayImageStorageForPresentation,
+    SopClasses.digitalXRayImageStorageForProcessing,
+    SopClasses.digitalMammographyXRayImageStorageForPresentation,
+    SopClasses.digitalMammographyXRayImageStorageForProcessing,
+    SopClasses.digitalIntraOralXRayImageStorageForPresentation,
+    SopClasses.digitalIntraOralXRayImageStorageForProcessing,
+    SopClasses.ctImageStorage,
+    SopClasses.enhancedCtImageStorage,
+    SopClasses.ultrasoundMultiFrameImageStorage,
+    SopClasses.mrImageStorage,
+    SopClasses.enhancedMrImageStorage,
+    SopClasses.ultrasoundImageStorage,
+    SopClasses.secondaryCaptureImageStorage,
+    SopClasses.multiFrameSingleBitSecondaryCaptureImageStorage,
+    SopClasses.multiFrameGrayscaleByteSecondaryCaptureImageStorage,
+    SopClasses.multiFrameGrayscaleWordSecondaryCaptureImageStorage,
+    SopClasses.multiFrameTrueColorSecondaryCaptureImageStorage,
+    SopClasses.grayscaleSoftcopyPresentationStateStorage,
+    SopClasses.xRayAngiographicImageStorage,
+    SopClasses.enhancedXaImageStorage,
+    SopClasses.xRayRadiofluoroscopicImageStorage,
+    SopClasses.breastTomosynthesisImageStorage,
+    SopClasses.nuclearMedicineImageStorage,
+    SopClasses.segmentationStorage,
+    SopClasses.basicTextSrStorage,
+    SopClasses.enhancedSrStorage,
+    SopClasses.comprehensiveSrStorage,
+    SopClasses.keyObjectSelectionDocumentStorage,
+    SopClasses.encapsulatedPdfStorage,
+    SopClasses.positronEmissionTomographyImageStorage,
+    SopClasses.enhancedPetImageStorage,
+    SopClasses.rtImageStorage,
+    SopClasses.rtDoseStorage,
+    SopClasses.rtStructureSetStorage,
+    SopClasses.rtPlanStorage,
+  ];
 }

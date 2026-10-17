@@ -60,9 +60,9 @@ Planned 2026-10-17. Each step ends with the dry gates green.
   - Tests: sha256 against golden for the 16-bit monochrome fixtures.
 - [x] **4. Net through C-ECHO** (`81b9de5`). The live echo passed on its first run. Transports (socket, in-memory), PDUs (with role selection), framing, the FSM (requestor rows), ACSE, `ApplicationEntity`, `associate` / `sendCEcho` / `release` / `abort`, and `DimseStatus`.
   - Tests: hand-checked PS3.8 vectors, a captured Orthanc A-ASSOCIATE-AC, and a live echo.
-- [x] **5. DIMSE and C-FIND.** Live STUDY and SERIES finds passed on the first run. Command sets, the fragmenter, the assembler (every PDV of every P-DATA-TF), and message IDs. `sendCFind` → `Stream<Dataset>` (S5).
+- [x] **5. DIMSE and C-FIND** (`b9446f8`). Live STUDY and SERIES finds passed on the first run. Command sets, the fragmenter, the assembler (every PDV of every P-DATA-TF), and message IDs. `sendCFind` → `Stream<Dataset>` (S5).
   - Tests: a scripted peer, and a live find at STUDY and SERIES level.
-- [ ] **6. C-GET and sinks.** `PresentationContexts.commonStorage` plus role items (≤ 128 contexts); `sendCGet` → `Stream<RetrieveProgress>`; `InstanceSink`, `ReceivedInstance`, `MemorySink`, `DirectorySink`.
+- [x] **6. C-GET and sinks.** `commonStorage` holds 36 classes. The live series get into a `DirectorySink` passed on its first run. `PresentationContexts.commonStorage` plus role items (≤ 128 contexts); `sendCGet` → `Stream<RetrieveProgress>`; `InstanceSink`, `ReceivedInstance`, `MemorySink`, `DirectorySink`.
   - Tests: I-20, I-21, and a live series get.
 - [ ] **7. Example and live gate.** `examples/bin/retrieve_and_render.dart` (Orthanc → C-FIND → C-GET → PGM); `scripts/pacs_seed.sh`, `scripts/live_gates.sh`, `just pacs-seed` / `just live`; `interop.yml` (`workflow_dispatch` only).
 

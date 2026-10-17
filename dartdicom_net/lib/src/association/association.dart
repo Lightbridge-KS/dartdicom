@@ -10,7 +10,9 @@ import '../dimse/status.dart';
 import '../dul/dul.dart';
 import '../errors.dart';
 import '../pdu/pdus.dart';
+import '../sink/instance_sink.dart';
 import 'presentation_contexts.dart';
+import 'retrieve_progress.dart';
 import '../transport/transport.dart';
 import 'application_entity.dart';
 
@@ -102,6 +104,97 @@ final class Association {
       _busy = false;
       if (!finished) await _dul.abort();
     }
+  }
+
+  /// Sends C-GET-RQ with [query] and receives the instances it matches on
+  /// this association, each handed to [sink] (PRD N-08, N-11).
+  ///
+  /// The storage classes to receive must have been proposed in
+  /// `ApplicationEntity.retrieveStorageClasses`, so the peer accepted this
+  /// side as their SCP. Each C-STORE sub-operation is answered once [sink]
+  /// has taken the instance: success, or a failure (0xC211) if it threw an
+  /// [Exception], and the retrieve carries on.
+  ///
+  /// Emits a [RetrieveProgress] for each response; the last carries the
+  /// final status. A final Failure is then also a [DimseFailureException]
+  /// stream error (surface S5). Cancelling the subscription aborts the
+  /// association in this version.
+  Stream<RetrieveProgress> sendCGet(Dataset query, InstanceSink sink,
+      {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) async* {
+    final context = _contextFor(model.get, 'C-GET');
+    _enter();
+    var finished = false;
+    try {
+      final id = _nextMessageId();
+      await _send(DimseMessage(
+          context.id,
+          requestCommand(CommandField.cGetRq, id, model.get,
+              hasDataset: true, priority: mediumPriority),
+          query.toBytes(transferSyntax: context.transferSyntax)));
+      while (true) {
+        final message = await _receive();
+        if (message.commandField == CommandField.cStoreRq) {
+          await _store(message, sink);
+          continue;
+        }
+        if (message.commandField != CommandField.cGetRsp ||
+            message.messageIdBeingRespondedTo != id) {
+          await _protocolAbort('expected a C-GET response or a C-STORE '
+              'sub-operation, but got $message');
+        }
+        final progress = RetrieveProgress.fromResponse(message);
+        if (!progress.isFinal) {
+          yield progress;
+          continue;
+        }
+        finished = true;
+        yield progress;
+        if (progress.status case final DimseFailure failure) {
+          throw DimseFailureException(failure);
+        }
+        return;
+      }
+    } finally {
+      _busy = false;
+      if (!finished) await _dul.abort();
+    }
+  }
+
+  /// Answers one C-STORE sub-operation of a C-GET: [sink] takes the
+  /// instance, then the C-STORE-RSP goes back on the same context.
+  Future<void> _store(DimseMessage rq, InstanceSink sink) async {
+    final context =
+        acceptedContexts.where((c) => c.id == rq.contextId).firstOrNull;
+    final sopClass = rq.affectedSopClassUid;
+    final sopInstance = rq.affectedSopInstanceUid;
+    int status;
+    if (context == null || !context.scpRole) {
+      status = 0x0122; // SOP class not supported: no SCP role was accepted
+    } else if (sopClass == null || sopInstance == null || rq.dataset == null) {
+      status = 0xC211;
+    } else {
+      try {
+        await sink.accept(ReceivedInstance(
+            sopClassUid: Uid(sopClass),
+            sopInstanceUid: Uid(sopInstance),
+            transferSyntax: context.transferSyntax,
+            bytes: rq.dataset!,
+            sourceAeTitle: calledAeTitle));
+        status = 0x0000;
+      } on Exception {
+        status = 0xC211; // the sink failed; the peer counts it as failed
+      }
+    }
+    final rsp = Dataset()
+      ..set(DicomTags.commandField, CommandField.cStoreRsp)
+      ..set(DicomTags.messageIdBeingRespondedTo, rq.messageId ?? 0)
+      ..set(DicomTags.commandDataSetType, noDataset)
+      ..set(DicomTags.status, status);
+    if (sopClass != null) rsp.set(DicomTags.affectedSopClassUid, sopClass);
+    if (sopInstance != null) {
+      rsp.set(DicomTags.affectedSopInstanceUid, sopInstance);
+    }
+    await _send(DimseMessage(rq.contextId, rsp));
   }
 
   /// Releases the association gracefully (A-RELEASE) and closes the
