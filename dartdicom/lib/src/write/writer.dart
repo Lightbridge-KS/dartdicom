@@ -25,6 +25,19 @@ const _specificCharacterSet = 0x00080005;
 /// Throws a [DicomWriteException] naming the tag when a value can't be
 /// encoded; nothing is returned in that case.
 Uint8List encodeDataset(Dataset ds, TransferSyntax ts,
+        {List<String> inheritedCharset = const [],
+        DeflateCodec? deflateCodec}) =>
+    encodeDatasetVerbatim(ds, ts,
+            inheritedCharset: inheritedCharset, deflateCodec: deflateCodec)
+        .bytes;
+
+/// As [encodeDataset], and whether the result is [ds] as read, verbatim:
+/// the same transfer syntax, and every element copied byte for byte (no
+/// edit, no re-encode, no group length dropped). File meta derivation uses
+/// it to decide whose implementation identity the file carries (M2
+/// decision 4).
+({Uint8List bytes, bool verbatim}) encodeDatasetVerbatim(
+    Dataset ds, TransferSyntax ts,
     {List<String> inheritedCharset = const [], DeflateCodec? deflateCodec}) {
   if (!ts.littleEndian) {
     throw DicomWriteException(
@@ -39,11 +52,15 @@ Uint8List encodeDataset(Dataset ds, TransferSyntax ts,
   }
   _checkPixelEncapsulation(ds, ts);
   final out = BytesBuilder(copy: false);
-  _Writer(ts).writeDataset(out, ds, inheritedCharset);
+  final writer = _Writer(ts)..writeDataset(out, ds, inheritedCharset);
   // Deflated: the Explicit VR Little Endian body, as one raw DEFLATE stream.
-  return ts.deflated
+  final bytes = ts.deflated
       ? (deflateCodec ?? const PureDartInflate()).deflate(out.takeBytes())
       : out.takeBytes();
+  return (
+    bytes: bytes,
+    verbatim: writer.verbatim && ds.transferSyntax == ts.uid,
+  );
 }
 
 /// Pixel Data can't move between an encapsulated (compressed) syntax and a
@@ -71,7 +88,12 @@ final class _Writer {
   final TransferSyntax ts;
   final Endian endian;
 
+  /// Whether every element so far was copied as read.
+  var verbatim = true;
+
   void writeDataset(BytesBuilder out, Dataset ds, List<String> inherited) {
+    // An edit (a set, a removal) at this level, or in an item.
+    if (isModified(ds)) verbatim = false;
     final source = ds.transferSyntax == null
         ? null
         : TransferSyntax.of(ds.transferSyntax!);
@@ -96,8 +118,12 @@ final class _Writer {
         }
         _writeElement(body, element, charset, source, ds);
       }
-      if (groupLength != null && _holds(groupLength, body.length)) {
-        _writeElement(out, groupLength, charset, source, ds);
+      if (groupLength != null) {
+        if (_holds(groupLength, body.length)) {
+          _writeElement(out, groupLength, charset, source, ds);
+        } else {
+          verbatim = false; // a stale group length is dropped
+        }
       }
       out.add(body.takeBytes());
       i = end;
@@ -118,6 +144,7 @@ final class _Writer {
     if (element.vr == Vr.SQ) {
       // A sequence keeps no bytes of its own: its items are written, each
       // element copied or re-encoded on its own, in the length forms read.
+      if (raw == null) verbatim = false; // a sequence set in memory
       final undefined = raw?.undefinedLength ?? false;
       final items = _encodeItems(element.value as Sequence, charset);
       _writeHeader(out, element, items.length, undefined: undefined);
@@ -131,6 +158,7 @@ final class _Writer {
       out.add(raw.bytes);
       return;
     }
+    verbatim = false; // re-encoded
     var value = element.value;
     if (raw != null &&
         source != null &&

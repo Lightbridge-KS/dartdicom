@@ -2,15 +2,6 @@
 # and the M2 step that fixes it. The test fails if an unlisted file fails or a
 # listed one passes, so this list only shrinks (docs/progress/overview-v0.md).
 
-# Step 4c: the writer adds an Implementation Version Name (Type 3) that the
-# meta omits; only a missing Implementation Class UID should fill the pair.
-data_store/data/SC_rgb.dcm  # I-10: version name added
-data_store/data/SC_rgb_16bit.dcm  # I-10: version name added
-data_store/data/SC_rgb_16bit_2frame.dcm  # I-10: version name added
-data_store/data/SC_rgb_2frame.dcm  # I-10: version name added
-data_store/data/SC_rgb_32bit.dcm  # I-10: version name added
-data_store/data/SC_rgb_32bit_2frame.dcm  # I-10: version name added
-
 # Step 5: lenient reading (C-10).
 data_store/data/693_J2KR.dcm  # stale group length: dropped on write; to report as a repair
 data_store/data/693_UNCI.dcm  # stale group lengths (left from the compressed file): dropped on write; to report

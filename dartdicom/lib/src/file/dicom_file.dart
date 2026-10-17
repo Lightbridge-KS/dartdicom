@@ -81,14 +81,19 @@ final class DicomFile {
       ts = (declared == null ? null : TransferSyntax.of(declared)) ??
           TransferSyntax.explicitVrLittleEndian;
     }
-    final body = encodeDataset(dataset, ts, deflateCodec: options.deflateCodec);
+    final (:bytes, :verbatim) =
+        encodeDatasetVerbatim(dataset, ts, deflateCodec: options.deflateCodec);
+    final changed = !verbatim || isModified(meta.dataset);
     return (BytesBuilder(copy: false)
-          ..add(_derivedMeta(ts).toHeaderBytes(preamble: preamble))
-          ..add(body))
+          ..add(_derivedMeta(ts, changed: changed)
+              .toHeaderBytes(preamble: preamble))
+          ..add(bytes))
         .takeBytes();
   }
 
-  FileMetaInformation _derivedMeta(TransferSyntax ts) {
+  /// The meta to write: derived from the dataset (I-17), naming dartdicom
+  /// as the writer when the file [changed] (M2 decision 4).
+  FileMetaInformation _derivedMeta(TransferSyntax ts, {required bool changed}) {
     final derived =
         readDataset(meta.dataset.elements, meta.dataset.transferSyntax);
 
@@ -131,18 +136,22 @@ final class DicomFile {
     if (derived.get(DicomTags.transferSyntaxUid) != ts.uid.value) {
       derived.set(DicomTags.transferSyntaxUid, ts.uid.value);
     }
-    // The implementation identity is kept as read; dartdicom's fills in only
-    // where the meta has none.
-    if (!derived.contains(DicomTags.implementationClassUid)) {
-      derived.set(DicomTags.implementationClassUid,
-          dartdicomImplementationClassUid.value);
+    // Who wrote the file (PS3.10 §7.1): dartdicom, when it changed it (an
+    // edit, a re-encode, an edited meta); otherwise the writer as read, so
+    // an untouched file stays byte-identical (I-10). The pair is filled
+    // together: a missing or empty class UID gets dartdicom's pair, while a
+    // missing version name (Type 3) beside another writer's UID stays
+    // missing.
+    if (changed || derived.get(DicomTags.implementationClassUid) == null) {
+      derived
+        ..set(DicomTags.implementationClassUid,
+            dartdicomImplementationClassUid.value)
+        ..set(DicomTags.implementationVersionName,
+            dartdicomImplementationVersionName);
     }
-    if (!derived.contains(DicomTags.implementationVersionName)) {
-      derived.set(DicomTags.implementationVersionName,
-          dartdicomImplementationVersionName);
-    }
-    // The meta version is the two bytes 00H 01H (PS3.10 §7.1).
-    if (!derived.contains(DicomTags.fileMetaInformationVersion)) {
+    // The meta version is the two bytes 00H 01H (PS3.10 §7.1), Type 1: an
+    // empty one is filled too.
+    if (derived.get(DicomTags.fileMetaInformationVersion)?.isEmpty ?? true) {
       derived.set(
           DicomTags.fileMetaInformationVersion, Uint8List.fromList([0, 1]));
     }

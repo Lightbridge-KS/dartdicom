@@ -103,11 +103,11 @@ Each step ends with the dry and floor gates green, and `just live` after a read 
   - A shared comparator with named tolerances.
   - `corpus_test.dart` as a ratchet over `corpus_expected.yaml`; the CI `corpus` job.
 - [x] **4a. Deflated** (`0d79809`). The puff.c-style inflate matched zlib on the first run (stored, fixed and dynamic blocks, levels 0–9); both Deflated fixtures agree with pydicom element for element and pixel for pixel. Pure-Dart inflate with a size cap; `ZLibDeflateCodec`; inflate in both parse entry points.
-- [x] **4b. Big Endian and the cross-syntax writer.** All 11 Big Endian corpus files agree with pydicom; the corpus ratchet is down to 17.
+- [x] **4b. Big Endian and the cross-syntax writer** (`e166995`). All 11 Big Endian corpus files agree with pydicom; the corpus ratchet is down to 17.
   - `WriteOptions`; the copy rule by VR; the swap rule (OW Pixel Data by Bits Allocated, 8-bit included).
   - Stale group lengths dropped.
   - Writing BE is refused with the fix named.
-- [ ] **4c. Implementation identity and I-17.** "Changed" means not verbatim, or the meta was edited.
+- [x] **4c. Implementation identity and I-17.** The six `SC_rgb*` corpus files now round-trip byte for byte; the ratchet is down to 11, all scheduled for step 5. "Changed" means not verbatim, or the meta was edited.
 - [ ] **5. Lenient reading and `ReadReport`.** `force`, syntax detection, UN rules, pydicom's ambiguous-VR rules, truncation, wrong lengths, VM, `tags`.
 - [ ] **6. Written-file gate.** `tool/write_all.dart` → pydicom exports → the Dart comparator (I-18); `dcmdump` with a versioned allowlist.
 - [ ] **7. Fuzz, PHI canary, close.** The parser, inflater and `force` path fuzzed; the sentinel scenario (I-9).
