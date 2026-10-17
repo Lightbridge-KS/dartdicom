@@ -161,14 +161,16 @@ String emitUids(List<UidEntry> uids) {
   bool isSopClass(UidEntry u) =>
       u.type == 'SOP Class' || u.type == 'Meta SOP Class';
   final withKeyword = uids.where((u) => u.keyword.isNotEmpty);
-  final storage = withKeyword
-      .where((u) => isSopClass(u) && !u.retired && isStorage(u))
-      .map((u) => '    ${identifierFor(u.keyword)},')
-      .join('\n');
+  String list(Iterable<UidEntry> entries) =>
+      entries.map((u) => '    ${identifierFor(u.keyword)},').join('\n');
+  final transferSyntaxes =
+      withKeyword.where((u) => u.type == 'Transfer Syntax');
+  final storage = list(
+      withKeyword.where((u) => isSopClass(u) && !u.retired && isStorage(u)));
 
   return '$_header\n'
       "import 'uid.dart';\n\n"
-      '${cls('TransferSyntaxes', 'Transfer syntax UIDs (PS3.6 Table A-1).', withKeyword.where((u) => u.type == 'Transfer Syntax'))}\n'
+      '${cls('TransferSyntaxes', 'Transfer syntax UIDs (PS3.6 Table A-1).', transferSyntaxes, extra: '\n  /// Every transfer syntax in the registry, retired ones included.\n  static const all = <Uid>[\n${list(transferSyntaxes)}\n  ];\n')}\n'
       '${cls('SopClasses', 'SOP Class UIDs (PS3.6 Table A-1).', withKeyword.where(isSopClass), extra: '\n  /// Every non-retired storage SOP class.\n  static const storage = <Uid>[\n$storage\n  ];\n')}';
 }
 

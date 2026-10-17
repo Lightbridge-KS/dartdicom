@@ -45,10 +45,10 @@ M1 builds the thinnest end-to-end slice through every package the first consumer
 
 Planned 2026-10-17. Each step ends with the dry gates green.
 
-- [ ] **0. Spike and docs.**
+- [x] **0. Spike and docs** (`1569aad`).
   - The DCMTK `findscu` / `getscu` run against the compose Orthanc is done (see *Confirmed contracts*).
   - Docs amended: blueprint F38 (`file/`, `Dataset.fromBytes`, I-5 narrowed) and F39 (the sink parses the header), surface S7 and S8, data §4.2.
-- [ ] **1. Core model.**
+- [x] **1. Core model.**
   - `errors.dart` (`DicomException` + the sealed `DicomDataException`); the `TransferSyntax` descriptor; the implementation identity; per-VR converters; charsets (default, `ISO_IR 100`, `ISO_IR 192`; F35 on encode).
   - `DataElement` keeps its raw span; `Dataset` (typed reads and writes, iteration, `transferSyntax`); `Sequence`.
 - [ ] **2. Core parse, write, façade.**

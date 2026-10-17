@@ -1,7 +1,17 @@
-/// The value of an `SQ` element: an ordered list of item datasets.
+import 'dart:collection';
+
+import 'dataset.dart';
+
+/// The value of an `SQ` element: an ordered, unmodifiable list of item
+/// datasets.
 ///
-/// Pre-release placeholder: the data model arrives with the tracer bullet
-/// (M1). It exists now so generated typed tags can name it (`One<Sequence>`).
-final class Sequence {
-  const Sequence._();
+/// The list itself can't change; replace the whole sequence with
+/// `Dataset.set` to add or remove items. Each item is an ordinary [Dataset],
+/// and editing an item marks the sequence as changed when it is written.
+final class Sequence extends UnmodifiableListView<Dataset> {
+  /// A sequence of [items], in order.
+  Sequence(Iterable<Dataset> items) : super(List.of(items, growable: false));
+
+  @override
+  String toString() => 'Sequence($length item${length == 1 ? '' : 's'})';
 }
