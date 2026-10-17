@@ -205,34 +205,21 @@ final class _Level {
   final elements = <DataElement>[];
 }
 
-/// Thrown where the data ends inside an element: reading stops, and keeps
-/// what came before.
-final class _Truncated implements Exception {
-  const _Truncated(this.at, this.tag);
-  final int at;
-  final int? tag;
-}
-
-/// An element whose VR came from an ambiguous dictionary entry, settled once
-/// its level is complete.
-typedef _Ambiguous = ({
-  DataElement element,
-  List<Vr> vrs,
-  _Level level,
-  bool implicit,
-  bool undefinedLength,
-});
+/// A value as read: where it ends, its [RawValue] (read or deferred), and
+/// for SQ its items.
+typedef _Value = ({int valueEnd, RawValue raw, Sequence? sequence});
 
 final class _Parser {
   _Parser(this.source, this.ts, this.options, this.repairs)
-      : endian = ts.littleEndian ? Endian.little : Endian.big;
+      : reader = _SourceReader(source, ts.littleEndian);
 
   final ByteSource source;
   final TransferSyntax ts;
-  final Endian endian;
   final ReadOptions options;
   final List<Repair> repairs;
-  final _ambiguous = <_Ambiguous>[];
+  final _SourceReader reader;
+  late final headers = _HeaderReader(reader, repairs);
+  final _ambiguous = _AmbiguousVrs();
 
   /// Set once the data ends early: every level stops reading.
   var _stopped = false;
@@ -250,46 +237,18 @@ final class _Parser {
   /// The top-level dataset from [start], its ambiguous VRs settled, and
   /// whether it was read only in part.
   ({List<DataElement> elements, bool partial}) readTop(int start) {
-    final level = _Level(explicit: _explicitAt(start, ts.explicitVr, null));
+    final level =
+        _Level(explicit: headers.explicitAt(start, ts.explicitVr, null));
     _readElements(start, source.length, _Scope.dataset, level);
-    _settleAmbiguous();
+    _ambiguous.settle();
     return (elements: level.elements, partial: _stopped || _filtered);
-  }
-
-  /// Whether the data at [at] reads as Explicit VR: two letters where the
-  /// VR would be. If that contradicts [expected], the data wins and the
-  /// contradiction is reported (pydicom checks at the dataset start and at
-  /// each item).
-  bool _explicitAt(int at, bool expected, int? sequenceTag) {
-    if (at + 8 > source.length) return expected;
-    final tag = _tagAt(at);
-    // A delimiter or an empty item has no VR to look at.
-    if (tag >> 16 == 0xFFFE) return expected;
-    final b = source.read(at + 4, 2);
-    final explicit = _isLetter(b[0]) && _isLetter(b[1]);
-    if (explicit != expected) {
-      repairs.add(Repair(RepairKind.syntaxContradicted,
-          tag: Tag(sequenceTag ?? tag), offset: at));
-    }
-    return explicit;
   }
 
   /// Reads elements from [start] until [end], or until [scope] says to stop,
   /// into [level]. Returns the offset after the last.
   int _readElements(int start, int end, _Scope scope, _Level level) {
     var at = start;
-    // The group length being checked against its group (staleGroupLength).
-    int? group;
-    int? groupStart;
-    int? groupLength;
-    void closeGroup(int upTo) {
-      if (groupStart != null && groupLength != upTo - groupStart!) {
-        repairs.add(Repair(RepairKind.staleGroupLength,
-            tag: Tag.of(group!, 0), offset: groupStart));
-      }
-      groupStart = null;
-    }
-
+    final groups = _GroupLengthCheck(reader, repairs);
     try {
       while (at < end && !_stopped) {
         if (at + 8 > end) {
@@ -298,11 +257,11 @@ final class _Parser {
           at = end;
           break;
         }
-        final tag = _tagAt(at);
+        final tag = reader.tagAt(at);
         if (scope == _Scope.meta && tag >> 16 != 0x0002) break;
         if (tag == _itemDelimiter) {
           if (scope == _Scope.undefinedItem) {
-            closeGroup(at);
+            groups.close(at);
             return at + 8;
           }
           throw DicomParseException('an Item Delimitation Item outside an item',
@@ -312,46 +271,28 @@ final class _Parser {
             options.stopBeforePixels &&
             tag == _pixelData) {
           _filtered = true;
-          groupStart = null; // its group isn't read to the end
+          groups.abandon(); // its group isn't read to the end
           break;
         }
-        if (tag >> 16 != group) {
-          closeGroup(at);
-          group = tag >> 16;
-        }
+        groups.enter(tag, at);
 
-        final header = _readHeader(at, tag, level);
+        final header = headers.read(at, tag, explicit: level.explicit);
         final value = _readValue(header, level, tag, scope);
         if (value == null) break; // dropped: the data ended inside it
         at = value.valueEnd;
         final element = readElement(Tag(tag), header.vr, value.raw,
             decoded: value.sequence);
         _track(tag, element, value.raw, level);
-        final keep = scope != _Scope.dataset ||
-            options.tags == null ||
-            options.tags!.contains(Tag(tag)) ||
-            tag == _specificCharacterSet;
-        if (!keep) {
+        if (!_keeps(scope, tag)) {
           _filtered = true;
           continue;
         }
         level.elements.add(element);
-        if (header.ambiguous case final vrs?) {
-          _ambiguous.add((
-            element: element,
-            vrs: vrs,
-            level: level,
-            implicit: !level.explicit,
-            undefinedLength: header.length == _undefined,
-          ));
-        }
-        _check(element, header);
-        if (tag & 0xFFFF == 0x0000 && value.raw.length == 4) {
-          groupStart = at;
-          groupLength = _u32Of(value.raw.bytes);
-        }
+        _ambiguous.note(element, header, level);
+        _checkElement(element, header, repairs);
+        groups.found(tag, value.raw, at);
       }
-      if (!_stopped) closeGroup(at);
+      if (!_stopped) groups.close(at);
     } on _Truncated catch (t) {
       _truncate(t);
       return t.at;
@@ -362,6 +303,14 @@ final class _Parser {
     }
     return at;
   }
+
+  /// Whether an element read in [scope] is kept: [ReadOptions.tags] filters
+  /// the top-level dataset only, and always keeps the character set.
+  bool _keeps(_Scope scope, int tag) =>
+      scope != _Scope.dataset ||
+      options.tags == null ||
+      options.tags!.contains(Tag(tag)) ||
+      tag == _specificCharacterSet;
 
   void _truncate(_Truncated t) {
     if (!_stopped) {
@@ -378,144 +327,20 @@ final class _Parser {
       case _specificCharacterSet when element.value is List<String>:
         level.charset = element.value as List<String>;
       case _bitsAllocated when raw.length >= 2:
-        level.bitsAllocated = _u16Of(raw.bytes);
+        level.bitsAllocated = reader.u16Of(raw.bytes);
       case _pixelRepresentation when raw.length >= 2:
-        level.pixelRepresentation = _u16Of(raw.bytes);
+        level.pixelRepresentation = reader.u16Of(raw.bytes);
     }
   }
 
-  /// The C-10 checks that leave an element as it is but report it: a
-  /// numeric length that doesn't fit the VR, several values where the
-  /// dictionary allows one (DA1, checked on the raw bytes so reads stay
-  /// lazy).
-  void _check(DataElement element, _Header header) {
-    final length = header.length;
-    if (length == _undefined || length == 0) return;
-    final vr = element.vr;
-    final size = numberSize(vr);
-    if (size != null && length % size != 0) {
-      repairs.add(Repair(RepairKind.wrongLength,
-          tag: element.tag, offset: header.valueStart));
-    }
-    if (Dictionary.standard.entry(element.tag)?.vm != '1') return;
-    final raw = rawValueOf(element)!;
-    final several = size != null
-        ? length >= 2 * size
-        : _multiValueText.contains(vr) &&
-            !raw.isDeferred &&
-            raw.bytes.contains(0x5C);
-    if (several) {
-      repairs.add(Repair(RepairKind.multipleValues,
-          tag: element.tag, offset: header.valueStart));
-    }
-  }
-
-  /// Reads the header of the element at [at], whose tag is [tag].
-  _Header _readHeader(int at, int tag, _Level level) {
-    if (!level.explicit) return _implicitHeader(at, tag);
-    _need(at, 8, tag);
-    final code = source.read(at + 4, 2);
-    if (!_isLetter(code[0]) || !_isLetter(code[1])) {
-      // No VR where Explicit VR data has one: read this element as
-      // implicit (pydicom does the same, silently).
-      repairs
-          .add(Repair(RepairKind.implicitElement, tag: Tag(tag), offset: at));
-      return _implicitHeader(at, tag);
-    }
-    var vr = Vr.fromCode(latin1.decode(code));
-    final int length;
-    final int valueStart;
-    if (vr == null) {
-      repairs.add(Repair(RepairKind.unknownVr, tag: Tag(tag), offset: at));
-      vr = Vr.UN;
-      length = _u16(at + 6);
-      valueStart = at + 8;
-    } else if (vr.hasLongLength) {
-      _need(at, 12, tag);
-      length = _u32(at + 8);
-      valueStart = at + 12;
-    } else {
-      length = _u16(at + 6);
-      valueStart = at + 8;
-    }
-    if (vr == Vr.UN) return _unknownValue(at, tag, length, valueStart);
-    return _Header(vr, length, valueStart);
-  }
-
-  _Header _implicitHeader(int at, int tag) {
-    final length = _u32(at + 4);
-    final (vr, ambiguous) = _dictionaryVr(Tag(tag));
-    // A tag the dictionary doesn't know, with an undefined length, can only
-    // be a sequence (PS3.5 §7.5.1); its items are Implicit VR too.
-    if (vr == Vr.UN && length == _undefined) {
-      return _Header(Vr.SQ, length, at + 8, itemsImplicit: true);
-    }
-    return _Header(vr, length, at + 8, ambiguous: ambiguous);
-  }
-
-  /// An explicit UN: given the dictionary's VR if it knows one (pydicom's
-  /// `replace_un_with_known_vr`), or read as an SQ of Implicit VR items if
-  /// its length is undefined (PS3.5 §6.2.2).
-  _Header _unknownValue(int at, int tag, int length, int valueStart) {
-    final t = Tag(tag);
-    if (length == _undefined) {
-      repairs.add(Repair(RepairKind.unSequence, tag: t, offset: at));
-      return _Header(Vr.SQ, length, valueStart, itemsImplicit: true);
-    }
-    final (vr, ambiguous) = _dictionaryVr(t);
-    final known =
-        vr != Vr.UN && length < 0xFFFF && (!t.isPrivate || vr == Vr.LO);
-    if (!known) return _Header(Vr.UN, length, valueStart);
-    repairs.add(Repair(RepairKind.unReplaced, tag: t, offset: at));
-    // A UN value is in Implicit VR terms, an SQ's items included.
-    return _Header(vr, length, valueStart,
-        ambiguous: ambiguous, itemsImplicit: vr == Vr.SQ);
-  }
-
-  /// The VR the dictionary gives [tag] (LO for a private creator, UL for a
-  /// group length, UN for an unknown tag), and its VRs when it gives
-  /// several, to settle once the level is read.
-  (Vr, List<Vr>?) _dictionaryVr(Tag tag) {
-    if (tag.element == 0x0000) return (Vr.UL, null);
-    if (tag.isPrivate && tag.element >= 0x0010 && tag.element <= 0x00FF) {
-      return (Vr.LO, null);
-    }
-    final entry = Dictionary.standard.entry(tag);
-    if (entry == null || entry.vrs.isEmpty) return (Vr.UN, null);
-    if (entry.vrs.length == 1) return (entry.vrs.single, null);
-    return (entry.vrs.first, entry.vrs);
-  }
-
-  /// Reads the value after [header]: where it ends, its [RawValue] (read or
-  /// deferred), and for SQ its items. Returns null for an undefined-length
+  /// Reads the value after [header]. Returns null for an undefined-length
   /// value the data ends inside: dropped, as pydicom drops it.
-  ({int valueEnd, RawValue raw, Sequence? sequence})? _readValue(
-      _Header header, _Level level, int tag, _Scope scope) {
+  _Value? _readValue(
+      _ElementHeader header, _Level level, int tag, _Scope scope) {
+    if (header.vr == Vr.SQ) return _readSequence(header, level, tag);
     final length = header.length;
     final valueStart = header.valueStart;
-    final undefined = length == _undefined;
-    if (header.vr == Vr.SQ) {
-      final int valueEnd;
-      final List<Dataset> items;
-      if (undefined) {
-        (items, valueEnd) =
-            _readItems(valueStart, null, level, tag, header.itemsImplicit);
-      } else {
-        final end = valueStart + length;
-        (items, _) = _readItems(valueStart, math.min(end, source.length), level,
-            tag, header.itemsImplicit);
-        if (end > source.length) _truncate(_Truncated(source.length, tag));
-        valueEnd = math.min(end, source.length);
-      }
-      return (
-        valueEnd: valueEnd,
-        raw: RawValue.sequence(
-            undefinedLength: undefined,
-            littleEndian: ts.littleEndian,
-            specificCharacterSet: level.charset),
-        sequence: Sequence(items),
-      );
-    }
+    final undefined = header.undefinedLength;
     final int valueEnd;
     if (undefined) {
       final end = _fragmentsEnd(valueStart, tag);
@@ -535,17 +360,10 @@ final class _Parser {
       valueEnd = valueStart + length;
     }
     final count = valueEnd - valueStart;
-    final opener = source.opener;
-    final defer = options.deferSize;
-    final deferred = scope == _Scope.dataset &&
-        !_stopped &&
-        opener != null &&
-        defer != null &&
-        tag != _specificCharacterSet &&
-        (undefined ? count >= defer : count > defer);
+    final opener = _openerToDefer(scope, tag, count, undefined: undefined);
     return (
       valueEnd: valueEnd,
-      raw: deferred
+      raw: opener != null
           ? RawValue.deferred(opener, valueStart, count,
               undefinedLength: undefined,
               littleEndian: ts.littleEndian,
@@ -555,6 +373,50 @@ final class _Parser {
               littleEndian: ts.littleEndian,
               specificCharacterSet: level.charset),
       sequence: null,
+    );
+  }
+
+  /// The opener to defer a value of [count] bytes through, or null to read
+  /// it now: only top-level values over [ReadOptions.deferSize] are
+  /// deferred, never the character set, and nothing once reading stopped.
+  SourceOpener? _openerToDefer(_Scope scope, int tag, int count,
+      {required bool undefined}) {
+    final opener = source.opener;
+    final defer = options.deferSize;
+    final deferred = scope == _Scope.dataset &&
+        !_stopped &&
+        opener != null &&
+        defer != null &&
+        tag != _specificCharacterSet &&
+        (undefined ? count >= defer : count > defer);
+    return deferred ? opener : null;
+  }
+
+  /// Reads an SQ value: its items, and a [RawValue] that holds no bytes (the
+  /// writer rebuilds a sequence from its items).
+  _Value _readSequence(_ElementHeader header, _Level level, int tag) {
+    final length = header.length;
+    final valueStart = header.valueStart;
+    final undefined = header.undefinedLength;
+    final int valueEnd;
+    final List<Dataset> items;
+    if (undefined) {
+      (items, valueEnd) =
+          _readItems(valueStart, null, level, tag, header.itemsImplicit);
+    } else {
+      final end = valueStart + length;
+      (items, _) = _readItems(valueStart, math.min(end, source.length), level,
+          tag, header.itemsImplicit);
+      if (end > source.length) _truncate(_Truncated(source.length, tag));
+      valueEnd = math.min(end, source.length);
+    }
+    return (
+      valueEnd: valueEnd,
+      raw: RawValue.sequence(
+          undefinedLength: undefined,
+          littleEndian: ts.littleEndian,
+          specificCharacterSet: level.charset),
+      sequence: Sequence(items),
     );
   }
 
@@ -577,15 +439,16 @@ final class _Parser {
         _truncate(_Truncated(at, sequenceTag));
         break;
       }
-      final tag = _tagAt(at);
-      final length = _u32(at + 4);
+      final tag = reader.tagAt(at);
+      final length = reader.u32(at + 4);
       if (tag == _sequenceDelimiter && end == null) return (items, at + 8);
       if (tag != _item) {
         throw DicomParseException('expected an Item in a sequence',
             offset: at, tag: Tag(sequenceTag));
       }
-      final explicit =
-          implicit ? false : _explicitAt(at + 8, level.explicit, sequenceTag);
+      final explicit = implicit
+          ? false
+          : headers.explicitAt(at + 8, level.explicit, sequenceTag);
       final itemLevel = _Level.item(level, explicit: explicit);
       if (length == _undefined) {
         at = _readElements(
@@ -612,8 +475,8 @@ final class _Parser {
     var at = start;
     while (true) {
       if (at + 8 > source.length) return null;
-      final itemTag = _tagAt(at);
-      final length = _u32(at + 4);
+      final itemTag = reader.tagAt(at);
+      final length = reader.u32(at + 4);
       if (itemTag == _sequenceDelimiter) return at + 8;
       if (itemTag != _item || length == _undefined) {
         throw DicomParseException('malformed encapsulated value',
@@ -623,17 +486,251 @@ final class _Parser {
       at += 8 + length;
     }
   }
+}
 
-  /// Settles each ambiguous VR now that its level, and the levels around
-  /// it, are complete (pydicom's rules: `resolveReadVr`).
-  void _settleAmbiguous() {
+// ---------------------------------------------------------------------------
+// Element headers: what the bytes at an element say it is.
+
+/// An element header: its VR, value length and where the value starts; the
+/// ambiguous dictionary VRs still to settle, and whether its SQ items are
+/// implicit.
+final class _ElementHeader {
+  _ElementHeader(this.vr, this.length, this.valueStart,
+      {this.ambiguous, this.itemsImplicit = false});
+
+  final Vr vr;
+  final int length;
+  final int valueStart;
+  final List<Vr>? ambiguous;
+  final bool itemsImplicit;
+
+  bool get undefinedLength => length == _undefined;
+}
+
+/// Reads element headers, and decides each element's VR: from the bytes in
+/// Explicit VR, from the dictionary in Implicit VR, and repaired where the
+/// two disagree with the data.
+final class _HeaderReader {
+  _HeaderReader(this.reader, this.repairs);
+
+  final _SourceReader reader;
+  final List<Repair> repairs;
+
+  ByteSource get source => reader.source;
+
+  /// Reads the header of the element at [at], whose tag is [tag], in a
+  /// level read as [explicit] VR.
+  _ElementHeader read(int at, int tag, {required bool explicit}) {
+    if (!explicit) return _implicit(at, tag);
+    reader.need(at, 8, tag);
+    final code = source.read(at + 4, 2);
+    if (!_isLetter(code[0]) || !_isLetter(code[1])) {
+      // No VR where Explicit VR data has one: read this element as
+      // implicit (pydicom does the same, silently).
+      repairs
+          .add(Repair(RepairKind.implicitElement, tag: Tag(tag), offset: at));
+      return _implicit(at, tag);
+    }
+    var vr = Vr.fromCode(latin1.decode(code));
+    final int length;
+    final int valueStart;
+    if (vr == null) {
+      repairs.add(Repair(RepairKind.unknownVr, tag: Tag(tag), offset: at));
+      vr = Vr.UN;
+      length = reader.u16(at + 6);
+      valueStart = at + 8;
+    } else if (vr.hasLongLength) {
+      reader.need(at, 12, tag);
+      length = reader.u32(at + 8);
+      valueStart = at + 12;
+    } else {
+      length = reader.u16(at + 6);
+      valueStart = at + 8;
+    }
+    if (vr == Vr.UN) return _unknownValue(at, tag, length, valueStart);
+    return _ElementHeader(vr, length, valueStart);
+  }
+
+  /// Whether the data at [at] reads as Explicit VR: two letters where the
+  /// VR would be. If that contradicts [expected], the data wins and the
+  /// contradiction is reported (pydicom checks at the dataset start and at
+  /// each item).
+  bool explicitAt(int at, bool expected, int? sequenceTag) {
+    if (at + 8 > source.length) return expected;
+    final tag = reader.tagAt(at);
+    // A delimiter or an empty item has no VR to look at.
+    if (tag >> 16 == 0xFFFE) return expected;
+    final b = source.read(at + 4, 2);
+    final explicit = _isLetter(b[0]) && _isLetter(b[1]);
+    if (explicit != expected) {
+      repairs.add(Repair(RepairKind.syntaxContradicted,
+          tag: Tag(sequenceTag ?? tag), offset: at));
+    }
+    return explicit;
+  }
+
+  _ElementHeader _implicit(int at, int tag) {
+    final length = reader.u32(at + 4);
+    final (vr, ambiguous) = _dictionaryVr(Tag(tag));
+    // A tag the dictionary doesn't know, with an undefined length, can only
+    // be a sequence (PS3.5 §7.5.1); its items are Implicit VR too.
+    if (vr == Vr.UN && length == _undefined) {
+      return _ElementHeader(Vr.SQ, length, at + 8, itemsImplicit: true);
+    }
+    return _ElementHeader(vr, length, at + 8, ambiguous: ambiguous);
+  }
+
+  /// An explicit UN: given the dictionary's VR if it knows one (pydicom's
+  /// `replace_un_with_known_vr`), or read as an SQ of Implicit VR items if
+  /// its length is undefined (PS3.5 §6.2.2).
+  _ElementHeader _unknownValue(int at, int tag, int length, int valueStart) {
+    final t = Tag(tag);
+    if (length == _undefined) {
+      repairs.add(Repair(RepairKind.unSequence, tag: t, offset: at));
+      return _ElementHeader(Vr.SQ, length, valueStart, itemsImplicit: true);
+    }
+    final (vr, ambiguous) = _dictionaryVr(t);
+    final known =
+        vr != Vr.UN && length < 0xFFFF && (!t.isPrivate || vr == Vr.LO);
+    if (!known) return _ElementHeader(Vr.UN, length, valueStart);
+    repairs.add(Repair(RepairKind.unReplaced, tag: t, offset: at));
+    // A UN value is in Implicit VR terms, an SQ's items included.
+    return _ElementHeader(vr, length, valueStart,
+        ambiguous: ambiguous, itemsImplicit: vr == Vr.SQ);
+  }
+}
+
+/// The VR the dictionary gives [tag] (LO for a private creator, UL for a
+/// group length, UN for an unknown tag), and its VRs when it gives several,
+/// to settle once the level is read.
+(Vr, List<Vr>?) _dictionaryVr(Tag tag) {
+  if (tag.element == 0x0000) return (Vr.UL, null);
+  if (tag.isPrivate && tag.element >= 0x0010 && tag.element <= 0x00FF) {
+    return (Vr.LO, null);
+  }
+  final entry = Dictionary.standard.entry(tag);
+  if (entry == null || entry.vrs.isEmpty) return (Vr.UN, null);
+  if (entry.vrs.length == 1) return (entry.vrs.single, null);
+  return (entry.vrs.first, entry.vrs);
+}
+
+// ---------------------------------------------------------------------------
+// Checks: C-10 repairs that leave the element as it is, and only report.
+
+/// Reports a numeric length that doesn't fit the VR, and several values
+/// where the dictionary allows one (DA1, checked on the raw bytes so reads
+/// stay lazy).
+void _checkElement(
+    DataElement element, _ElementHeader header, List<Repair> repairs) {
+  final length = header.length;
+  if (header.undefinedLength || length == 0) return;
+  final vr = element.vr;
+  final size = numberSize(vr);
+  if (size != null && length % size != 0) {
+    repairs.add(Repair(RepairKind.wrongLength,
+        tag: element.tag, offset: header.valueStart));
+  }
+  if (Dictionary.standard.entry(element.tag)?.vm != '1') return;
+  final raw = rawValueOf(element)!;
+  final several = size != null
+      ? length >= 2 * size
+      : _multiValueText.contains(vr) &&
+          !raw.isDeferred &&
+          raw.bytes.contains(0x5C);
+  if (several) {
+    repairs.add(Repair(RepairKind.multipleValues,
+        tag: element.tag, offset: header.valueStart));
+  }
+}
+
+/// Text VRs that can hold several values, split on backslash.
+const _multiValueText = {
+  Vr.AE, Vr.AS, Vr.CS, Vr.DA, Vr.DS, Vr.DT, Vr.IS, Vr.LO, Vr.PN, //
+  Vr.SH, Vr.TM, Vr.UC, Vr.UI,
+};
+
+/// Checks each group length (gggg,0000) against the group it measures, and
+/// reports one that is stale. One per level read.
+final class _GroupLengthCheck {
+  _GroupLengthCheck(this.reader, this.repairs);
+
+  final _SourceReader reader;
+  final List<Repair> repairs;
+  int? _group;
+  int? _groupStart;
+  int? _groupLength;
+
+  /// The element with [tag] at [at] is next: a new group closes the last.
+  void enter(int tag, int at) {
+    if (tag >> 16 == _group) return;
+    close(at);
+    _group = tag >> 16;
+  }
+
+  /// The element with [tag] was read, up to [end]: if it is a group length,
+  /// its group starts there.
+  void found(int tag, RawValue raw, int end) {
+    if (tag & 0xFFFF == 0x0000 && raw.length == 4) {
+      _groupStart = end;
+      _groupLength = reader.u32Of(raw.bytes);
+    }
+  }
+
+  /// The group being measured ends at [upTo].
+  void close(int upTo) {
+    final start = _groupStart;
+    if (start != null && _groupLength != upTo - start) {
+      repairs.add(Repair(RepairKind.staleGroupLength,
+          tag: Tag.of(_group!, 0), offset: start));
+    }
+    _groupStart = null;
+  }
+
+  /// The group isn't read to its end, so its length can't be checked.
+  void abandon() => _groupStart = null;
+}
+
+// ---------------------------------------------------------------------------
+// Ambiguous VRs: noted while the walk runs, settled once it is done.
+
+/// An element whose VR came from an ambiguous dictionary entry, settled once
+/// its level is complete.
+typedef _Ambiguous = ({
+  DataElement element,
+  List<Vr> vrs,
+  _Level level,
+  bool implicit,
+  bool undefinedLength,
+});
+
+/// The elements whose VR is still to settle (pydicom's rules:
+/// `resolveReadVr`), because the attributes that decide it can come later
+/// in the level, or in a level around it.
+final class _AmbiguousVrs {
+  final _pending = <_Ambiguous>[];
+
+  /// Notes [element] if its [header] left its VR ambiguous.
+  void note(DataElement element, _ElementHeader header, _Level level) {
+    if (header.ambiguous case final vrs?) {
+      _pending.add((
+        element: element,
+        vrs: vrs,
+        level: level,
+        implicit: !level.explicit,
+        undefinedLength: header.undefinedLength,
+      ));
+    }
+  }
+
+  /// Settles each noted VR, now that every level is complete.
+  void settle() {
     int? firstInt(List<DataElement> elements, int tag) {
       final value =
           elements.where((e) => e.tag.value == tag).firstOrNull?.value;
       return value is List<int> && value.isNotEmpty ? value.first : null;
     }
 
-    for (final a in _ambiguous) {
+    for (final a in _pending) {
       int? pixelRepresentation;
       for (_Level? l = a.level; l != null; l = l.parent) {
         pixelRepresentation = firstInt(l.elements, _pixelRepresentation);
@@ -652,52 +749,54 @@ final class _Parser {
       if (vr != null && vr != a.element.vr) retypeElement(a.element, vr);
     }
   }
+}
 
-  ByteData _data(int at, int n) => ByteData.sublistView(source.read(at, n));
+// ---------------------------------------------------------------------------
+// Bytes: the source read in the transfer syntax's byte order.
 
-  int _u16(int at) {
-    _need(at, 2, null);
+/// Thrown where the data ends inside an element: reading stops, and keeps
+/// what came before.
+final class _Truncated implements Exception {
+  const _Truncated(this.at, this.tag);
+  final int at;
+  final int? tag;
+}
+
+/// Reads numbers and tags from a [ByteSource] in one byte order. A read
+/// past the end throws [_Truncated].
+final class _SourceReader {
+  _SourceReader(this.source, bool littleEndian)
+      : endian = littleEndian ? Endian.little : Endian.big;
+
+  final ByteSource source;
+  final Endian endian;
+
+  int u16(int at) {
+    need(at, 2, null);
     return _data(at, 2).getUint16(0, endian);
   }
 
-  int _u32(int at) {
-    _need(at, 4, null);
+  int u32(int at) {
+    need(at, 4, null);
     return _data(at, 4).getUint32(0, endian);
   }
 
-  int _u16Of(Uint8List bytes) =>
-      ByteData.sublistView(bytes).getUint16(0, endian);
-
-  int _u32Of(Uint8List bytes) =>
-      ByteData.sublistView(bytes).getUint32(0, endian);
-
-  int _tagAt(int at) {
-    _need(at, 4, null);
+  int tagAt(int at) {
+    need(at, 4, null);
     final d = _data(at, 4);
     return d.getUint16(0, endian) << 16 | d.getUint16(2, endian);
   }
 
-  void _need(int at, int n, int? tag) {
+  int u16Of(Uint8List bytes) =>
+      ByteData.sublistView(bytes).getUint16(0, endian);
+
+  int u32Of(Uint8List bytes) =>
+      ByteData.sublistView(bytes).getUint32(0, endian);
+
+  /// Throws [_Truncated] unless [n] bytes are there at [at].
+  void need(int at, int n, int? tag) {
     if (at + n > source.length) throw _Truncated(at, tag);
   }
+
+  ByteData _data(int at, int n) => ByteData.sublistView(source.read(at, n));
 }
-
-/// An element header: its VR, value length and where the value starts; the
-/// ambiguous dictionary VRs still to settle, and whether its SQ items are
-/// implicit.
-final class _Header {
-  _Header(this.vr, this.length, this.valueStart,
-      {this.ambiguous, this.itemsImplicit = false});
-
-  final Vr vr;
-  final int length;
-  final int valueStart;
-  final List<Vr>? ambiguous;
-  final bool itemsImplicit;
-}
-
-/// Text VRs that can hold several values, split on backslash.
-const _multiValueText = {
-  Vr.AE, Vr.AS, Vr.CS, Vr.DA, Vr.DS, Vr.DT, Vr.IS, Vr.LO, Vr.PN, //
-  Vr.SH, Vr.TM, Vr.UC, Vr.UI,
-};
