@@ -9,12 +9,13 @@
 @TestOn('vm')
 library;
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
+
+import '../support/fixtures.dart';
 
 import '../support/f41.dart';
 import '../support/golden.dart';
@@ -50,15 +51,8 @@ void main() {
     var compared = 0;
     var pydicomUnreadable = 0;
 
-    final goldens = goldenRoot
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((f) => f.path.endsWith('.json'))
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
-    for (final golden in goldens) {
-      final record =
-          jsonDecode(golden.readAsStringSync()) as Map<String, Object?>;
+    final goldens = goldenRecords(goldenRoot);
+    for (final record in goldens) {
       final path = record['file']! as String;
       final bytes = File('$corpusRoot/$path').readAsBytesSync();
       // Read as pydicom read it: with force when it needed force.

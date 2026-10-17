@@ -5,31 +5,21 @@
 @TestOn('vm')
 library;
 
-import 'dart:io';
-
 import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
+
+import '../support/fixtures.dart';
 
 import '../support/f41.dart';
 
 const _zlib = ZLibDeflateCodec();
 
 void main() {
-  final fixtures = [
-    for (final dir in ['synthetic', 'pydicom'])
-      ...Directory('../fixtures/data/$dir')
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.dcm')),
-  ]..sort((a, b) => a.path.compareTo(b.path));
-
-  for (final fixture in fixtures) {
-    final name = fixture.uri.pathSegments
-        .skip(fixture.uri.pathSegments.length - 2)
-        .join('/');
-    final bytes = fixture.readAsBytesSync();
+  for (final source in fixtureSet()) {
+    final name = fixtureName(source);
+    final bytes = source.readAsBytesSync();
     final file = DicomFile.fromBytes(bytes);
 
     // A few public files carry file meta whose SOP UIDs contradict the

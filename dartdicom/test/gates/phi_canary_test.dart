@@ -6,12 +6,13 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
+
+import '../support/fixtures.dart';
 
 final _marker = RegExp('zxqv', caseSensitive: false);
 const _privateText = Tag(0x00091001);
@@ -72,8 +73,7 @@ Iterable<String> _strings(DicomFile file) sync* {
 }
 
 void main() {
-  final bytes =
-      File('../fixtures/data/synthetic/phi_canary.dcm').readAsBytesSync();
+  final bytes = fixture('synthetic/phi_canary.dcm').readAsBytesSync();
   final file = DicomFile.fromBytes(bytes);
   final ds = file.dataset;
 

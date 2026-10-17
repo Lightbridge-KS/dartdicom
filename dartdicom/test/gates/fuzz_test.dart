@@ -16,6 +16,8 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
 
+import '../support/fixtures.dart';
+
 final _env = Platform.environment;
 final _cases = int.tryParse(_env['DARTDICOM_FUZZ_CASES'] ?? '') ?? 2000;
 final _firstSeed = int.tryParse(_env['DARTDICOM_FUZZ_SEED'] ?? '') ?? 0;
@@ -38,13 +40,7 @@ final class _Capped implements DeflateCodec {
 void main() {
   // The small fixtures: every syntax the reader knows, sequences, private
   // tags, charsets, encapsulated and Deflated data.
-  final seeds = [
-    for (final dir in ['synthetic', 'pydicom'])
-      ...Directory('../fixtures/data/$dir')
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.dcm') && f.lengthSync() < 10000),
-  ]..sort((a, b) => a.path.compareTo(b.path));
+  final seeds = fixtureSet(under: 10000);
   final seedBytes = [for (final f in seeds) f.readAsBytesSync()];
   final seedNames = [for (final f in seeds) f.uri.pathSegments.last];
 

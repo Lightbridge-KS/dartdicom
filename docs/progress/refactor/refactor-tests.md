@@ -25,8 +25,8 @@ test/
 ```
 
 - [x] **T1 + T2** (`b43fabc`). Move the tests into the mirrored folders and `gates/`. Move `writer_test.dart`'s file-meta groups (I-17, implementation identity) into `file/dicom_file_test.dart`, with the two I-17 groups as one. Pure moves.
-- [x] **T3 (option B)** (this commit). `corpus_expected.txt` and `dcmdump_allowlist.txt` become const records in `gates/expected.dart`, so a reason is required by the type. Both line parsers go away.
-- [ ] **T4.** Explore `support/fixtures.dart`: one fixture root and one listing.
+- [x] **T3 (option B)** (`9f45b24`). `corpus_expected.txt` and `dcmdump_allowlist.txt` become const records in `gates/expected.dart`, so a reason is required by the type. Both line parsers go away.
+- [x] **T4** (this commit). `support/fixtures.dart` holds the fixture root, `fixtureSet`, `fixture`/`readFixture`/`fixtureDirectory`, `fixtureName` and `goldenRecords`. It replaces the root path written 16× in 9 files, three fixture listings, two golden listings and the duplicated `_fixture` loader. `goldenRecords` lives here, not in `golden.dart`, so `golden.dart` stays free of `dart:io`.
 - [ ] **T5.** Explore `support/bytes.dart`: one byte-building kit, shared by `lenient_test` and `phi_canary_test`.
 
 Preserve:
@@ -46,6 +46,8 @@ Baseline at `beca601`: 350 test names on the VM (349 pass, 1 skipped: the writte
 
 T1 + T2 (`b43fabc`): the same 350 names on the VM and 174 on node. Only the two tests of the old "I-17: the meta follows the dataset" group are renamed, now under "file meta is derived from the dataset (I-17)". `just dry`, `just fuzz`, `just written --corpus` and the corpus test (85 of 85) pass from their scripts at the new paths.
 
-T3: the Dart regex is identical to the `.txt` one, after that parser's whitespace join. Planting a passing corpus file in `corpusExpectedFailures` fails the corpus test ("these now pass"). Emptying `dcmdumpAllowlist` fails `just written --corpus` on the CP-246 warning, while the fixture-only gate never raises it.
+T3 (`9f45b24`): the Dart regex is identical to the `.txt` one, after that parser's whitespace join. Planting a passing corpus file in `corpusExpectedFailures` fails the corpus test ("these now pass"). Emptying `dcmdumpAllowlist` fails `just written --corpus` on the CP-246 warning, while the fixture-only gate never raises it.
+
+T4: the same 350 names on the VM. `just fuzz` at the default seed gives identical counts (mutated 85,465 read / 14,545 refused; force 97,175 / 2,830), so the seed order held. `just dry`, `just written --corpus` and the corpus test (85 of 85) pass.
 
 On completion: set `status: complete`, then ask whether to prune this tracker.

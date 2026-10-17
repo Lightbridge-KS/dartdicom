@@ -4,19 +4,17 @@
 @TestOn('vm')
 library;
 
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
 import 'package:test/test.dart';
 
-DicomFile _fixture(String path) =>
-    DicomFile.fromBytes(File('../fixtures/data/$path').readAsBytesSync());
+import '../support/fixtures.dart';
 
 void main() {
   group('file meta is derived from the dataset (I-17)', () {
     test('conflicting SOP Instance UIDs fail the write', () {
-      final file = _fixture('synthetic/ct_signed_explicit_le.dcm');
+      final file = readFixture('synthetic/ct_signed_explicit_le.dcm');
       file.dataset.set(DicomTags.sopInstanceUid, '1.2.3.4');
       expect(
           file.toBytes,
@@ -43,7 +41,7 @@ void main() {
     });
 
     test('forInstance meta plus received bytes is a valid file', () {
-      final source = _fixture('synthetic/ct_implicit_le.dcm');
+      final source = readFixture('synthetic/ct_implicit_le.dcm');
       final datasetBytes = source.dataset
           .toBytes(transferSyntax: TransferSyntaxes.implicitVrLittleEndian);
       final meta = FileMetaInformation.forInstance(
@@ -61,7 +59,7 @@ void main() {
     });
 
     test('the meta transfer syntax is the one written', () {
-      final file = _fixture('synthetic/ct_signed_explicit_le.dcm');
+      final file = readFixture('synthetic/ct_signed_explicit_le.dcm');
       final back = DicomFile.fromBytes(file.toBytes(
           options: const WriteOptions(
               transferSyntax: TransferSyntaxes.implicitVrLittleEndian)));
@@ -92,14 +90,14 @@ void main() {
         .get(DicomTags.implementationVersionName);
 
     test('an untouched file keeps the writer it was read with', () {
-      final file = _fixture('pydicom/CT_small.dcm');
+      final file = readFixture('pydicom/CT_small.dcm');
       final original = file.meta.implementationClassUid?.value;
       expect(original, isNot(dartdicomImplementationClassUid.value));
       expect(classUid(file.toBytes()), original);
     });
 
     test('an edited file names dartdicom, both tags', () {
-      final file = _fixture('pydicom/CT_small.dcm');
+      final file = readFixture('pydicom/CT_small.dcm');
       file.dataset.set(DicomTags.patientName, 'Anonymous');
       final bytes = file.toBytes();
       expect(classUid(bytes), dartdicomImplementationClassUid.value);
@@ -107,19 +105,19 @@ void main() {
     });
 
     test('a removal, or an edit inside an item, also counts', () {
-      final removed = _fixture('pydicom/CT_small.dcm');
+      final removed = readFixture('pydicom/CT_small.dcm');
       removed.dataset.remove(DicomTags.patientName);
       expect(
           classUid(removed.toBytes()), dartdicomImplementationClassUid.value);
 
-      final nested = _fixture('synthetic/sequences_undefined_length.dcm');
+      final nested = readFixture('synthetic/sequences_undefined_length.dcm');
       final sq = nested.dataset.elements.firstWhere((e) => e.vr == Vr.SQ);
       (sq.value as Sequence).first.set(DicomTags.codeMeaning, 'Edited');
       expect(classUid(nested.toBytes()), dartdicomImplementationClassUid.value);
     });
 
     test('a re-encoded file names dartdicom', () {
-      final file = _fixture('synthetic/ct_signed_explicit_le.dcm');
+      final file = readFixture('synthetic/ct_signed_explicit_le.dcm');
       final bytes = file.toBytes(
           options: const WriteOptions(
               transferSyntax: TransferSyntaxes.implicitVrLittleEndian));

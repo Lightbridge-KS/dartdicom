@@ -11,13 +11,13 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
 
+import '../support/fixtures.dart';
+
 import '../support/f41.dart' show flatten;
 
 /// A CT fixture with 8 MiB of Pixel Data, written to [dir].
 File _bigFile(Directory dir) {
-  final file = DicomFile.fromBytes(
-      File('../fixtures/data/synthetic/ct_signed_explicit_le.dcm')
-          .readAsBytesSync());
+  final file = readFixture('synthetic/ct_signed_explicit_le.dcm');
   final pixels = Uint8List(8 << 20);
   for (var i = 0; i < pixels.length; i++) {
     pixels[i] = i & 0xFF;
@@ -80,13 +80,7 @@ void main() {
   });
 
   group('readAsDicom and readAsDicomSync agree', () {
-    final fixtures = [
-      for (final d in ['synthetic', 'pydicom'])
-        ...Directory('../fixtures/data/$d')
-            .listSync()
-            .whereType<File>()
-            .where((f) => f.path.endsWith('.dcm')),
-    ]..sort((a, b) => a.path.compareTo(b.path));
+    final fixtures = fixtureSet();
     for (final options in const [
       ReadOptions(),
       ReadOptions(stopBeforePixels: true),
@@ -116,9 +110,7 @@ void main() {
   });
 
   group('writeAsDicom and writeAsDicomSync', () {
-    final source = DicomFile.fromBytes(
-        File('../fixtures/data/synthetic/ct_signed_explicit_le.dcm')
-            .readAsBytesSync());
+    final source = readFixture('synthetic/ct_signed_explicit_le.dcm');
 
     Future<List<File>> writeBoth(WriteOptions options) async => [
           await File('${dir.path}/async.dcm')

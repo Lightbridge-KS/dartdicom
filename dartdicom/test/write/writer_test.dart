@@ -5,7 +5,6 @@
 @TestOn('vm')
 library;
 
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
@@ -13,13 +12,12 @@ import 'package:dartdicom/io.dart';
 import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
 
-DicomFile _fixture(String path) =>
-    DicomFile.fromBytes(File('../fixtures/data/$path').readAsBytesSync());
+import '../support/fixtures.dart';
 
 void main() {
   group('edits', () {
     test('a changed value is written and read back', () {
-      final file = _fixture('synthetic/ct_signed_explicit_le.dcm');
+      final file = readFixture('synthetic/ct_signed_explicit_le.dcm');
       file.dataset
         ..set(DicomTags.patientName, 'Anonymous')
         ..remove(DicomTags.patientBirthDate);
@@ -31,7 +29,7 @@ void main() {
     });
 
     test('an edit inside a nested item rewrites its sequence', () {
-      final file = _fixture('synthetic/sequences_undefined_length.dcm');
+      final file = readFixture('synthetic/sequences_undefined_length.dcm');
       final sqElement = file.dataset.elements.firstWhere((e) => e.vr == Vr.SQ);
       final item = (sqElement.value as Sequence).first;
       item.set(DicomTags.codeMeaning, 'Edited');
@@ -47,7 +45,7 @@ void main() {
   group('text is written strictly (F35, I-27)', () {
     test('non-ASCII text with no Specific Character Set fails, naming the tag',
         () {
-      final file = _fixture('synthetic/ct_signed_explicit_le.dcm');
+      final file = readFixture('synthetic/ct_signed_explicit_le.dcm');
       file.dataset.set(DicomTags.patientName, 'Gómez^Ana');
       expect(
           file.toBytes,
@@ -59,7 +57,7 @@ void main() {
     });
 
     test('it writes once the charset is declared', () {
-      final file = _fixture('synthetic/ct_signed_explicit_le.dcm');
+      final file = readFixture('synthetic/ct_signed_explicit_le.dcm');
       file.dataset
         ..setAll(DicomTags.specificCharacterSet, ['ISO_IR 192'])
         ..set(DicomTags.patientName, 'Gómez^Ana');
@@ -71,7 +69,7 @@ void main() {
     });
 
     test('raw text is re-encoded when the charset changes', () {
-      final file = _fixture('synthetic/charset_latin1.dcm');
+      final file = readFixture('synthetic/charset_latin1.dcm');
       final name = file.dataset.require(DicomTags.patientName);
       file.dataset.setAll(DicomTags.specificCharacterSet, ['ISO_IR 192']);
       expect(
@@ -101,8 +99,7 @@ void main() {
     });
 
     test('stopBeforePixels leaves Pixel Data out', () {
-      final bytes =
-          File('../fixtures/data/pydicom/CT_small.dcm').readAsBytesSync();
+      final bytes = fixture('pydicom/CT_small.dcm').readAsBytesSync();
       final head = DicomFile.fromBytes(bytes,
           options: const ReadOptions(stopBeforePixels: true));
       expect(head.dataset.contains(DicomTags.pixelData), isFalse);
@@ -163,7 +160,7 @@ void main() {
 
   group('Pixel Data never moves between compressed and native syntaxes', () {
     test('a compressed dataset re-encoded as native is refused', () {
-      final rle = _fixture('pydicom/MR_small_RLE.dcm').dataset;
+      final rle = readFixture('pydicom/MR_small_RLE.dcm').dataset;
       expect(
           () => rle.toBytes(
               transferSyntax: TransferSyntaxes.explicitVrLittleEndian),
@@ -186,12 +183,12 @@ void main() {
 
   group('Deflated (decision 3)', () {
     test('writing needs a codec that encodes, and says which', () {
-      final file = _fixture('synthetic/ct_deflated.dcm');
+      final file = readFixture('synthetic/ct_deflated.dcm');
       expect(file.toBytes, throwsA(isA<UnsupportedError>()));
     });
 
     test('zlib writes it, and the result reads back the same', () {
-      final file = _fixture('synthetic/ct_deflated.dcm');
+      final file = readFixture('synthetic/ct_deflated.dcm');
       final written = file.toBytes(
           options: const WriteOptions(deflateCodec: ZLibDeflateCodec()));
       final back = DicomFile.fromBytes(written);
@@ -212,8 +209,7 @@ void main() {
     });
 
     test('a malformed deflated body is a parse error', () {
-      final bytes =
-          File('../fixtures/data/synthetic/ct_deflated.dcm').readAsBytesSync();
+      final bytes = fixture('synthetic/ct_deflated.dcm').readAsBytesSync();
       final broken = Uint8List.fromList(bytes)
         ..fillRange(bytes.length - 40, bytes.length, 0xFF);
       expect(() => DicomFile.fromBytes(broken),
@@ -239,7 +235,7 @@ void main() {
     });
 
     test('Implicit, Explicit and Deflated re-encode each other', () {
-      final file = _fixture('synthetic/ct_signed_explicit_le.dcm');
+      final file = readFixture('synthetic/ct_signed_explicit_le.dcm');
       for (final ts in [
         TransferSyntaxes.implicitVrLittleEndian,
         TransferSyntaxes.deflatedExplicitVrLittleEndian,

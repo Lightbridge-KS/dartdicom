@@ -4,32 +4,23 @@
 @TestOn('vm')
 library;
 
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:dartdicom/dartdicom.dart';
 import 'package:test/test.dart';
 
+import '../support/fixtures.dart';
 import '../support/golden.dart';
 
 /// Every registered transfer syntax reads (C-08).
 bool _readable(String uid) => TransferSyntax.of(Uid(uid)) != null;
 
 void main() {
-  final goldens = Directory('../fixtures/data/golden')
-      .listSync(recursive: true)
-      .whereType<File>()
-      .where((f) => f.path.endsWith('.json'))
-      .toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
+  final goldens = goldenRecords(fixtureDirectory('golden'));
 
   test('the golden corpus is there', () => expect(goldens, isNotEmpty));
 
-  for (final golden in goldens) {
-    final record =
-        jsonDecode(golden.readAsStringSync()) as Map<String, Object?>;
+  for (final record in goldens) {
     final path = record['file'] as String;
-    final bytes = File('../fixtures/data/$path').readAsBytesSync();
+    final bytes = fixture(path).readAsBytesSync();
 
     if (!_readable(record['transfer_syntax']! as String)) {
       test('$path: an unsupported transfer syntax is a clear parse error', () {

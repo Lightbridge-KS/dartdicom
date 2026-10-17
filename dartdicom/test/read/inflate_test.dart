@@ -10,6 +10,8 @@ import 'dart:typed_data';
 import 'package:dartdicom/src/read/inflate.dart';
 import 'package:test/test.dart';
 
+import '../support/fixtures.dart';
+
 Uint8List _zlib(List<int> data, {int level = 6}) =>
     Uint8List.fromList(ZLibEncoder(raw: true, level: level).convert(data));
 
@@ -26,8 +28,7 @@ void main() {
         Uint8List.fromList(List.generate(100000, (_) => random.nextInt(256))),
     'long runs':
         Uint8List.fromList(List.generate(300000, (i) => (i ~/ 1000) & 0xFF)),
-    'a fixture dataset':
-        File('../fixtures/data/pydicom/CT_small.dcm').readAsBytesSync(),
+    'a fixture dataset': fixture('pydicom/CT_small.dcm').readAsBytesSync(),
   };
 
   for (final MapEntry(key: name, value: data) in inputs.entries) {
@@ -40,10 +41,10 @@ void main() {
 
   test('the Deflated fixtures inflate to what zlib gives', () {
     for (final path in [
-      '../fixtures/data/synthetic/ct_deflated.dcm',
-      '../fixtures/data/pydicom/image_dfl.dcm',
+      'synthetic/ct_deflated.dcm',
+      'pydicom/image_dfl.dcm',
     ]) {
-      final bytes = File(path).readAsBytesSync();
+      final bytes = fixture(path).readAsBytesSync();
       // The meta group ends where the deflated body starts; find it by
       // trying offsets after the meta's group length.
       final groupLength =
