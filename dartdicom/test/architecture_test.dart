@@ -57,6 +57,17 @@ void main() {
     expect(_offenders(codecs, banned), isEmpty);
   });
 
+  test('I-29: only vr/value_codec.dart imports vr/codec/', () {
+    final banned =
+        RegExp(r'''^\s*(?:import|export)\s+['"](?:codec/|.*/vr/codec/)''');
+    bool isBarrel(File f) => f.path == 'lib/src/vr/value_codec.dart';
+    // Guard the guard: the barrel's own imports match the pattern.
+    expect(_offenders(_libFiles.where(isBarrel), banned), isNotEmpty);
+    final others = _libFiles
+        .where((f) => !isBarrel(f) && !f.path.startsWith('lib/src/vr/codec/'));
+    expect(_offenders(others, banned), isEmpty);
+  });
+
   test('I-7: no top-level mutable variables in lib/', () {
     // Guard the guard: the pattern must flag mutable declarations and leave
     // constants, functions and types alone.

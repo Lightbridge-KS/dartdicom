@@ -123,7 +123,7 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 │   ├── lib/src/tag/              Tag, One<T>, Many<T>; DicomTags (generated, typed: DA1; named by S6)
 │   ├── lib/src/dictionary/       Dictionary value; generated tables
 │   ├── lib/src/uid/              Uid, UID generation; TransferSyntax descriptors; SopClasses (generated)
-│   ├── lib/src/vr/               Vr enum; per-VR converters and writers
+│   ├── lib/src/vr/               Vr enum; per-VR converters and writers: value_codec.dart, the barrel over codec/ (vr_family · text_codec · number_codec; I-29) *(amended)*
 │   ├── lib/src/charset/          CharsetResolver; single-byte codecs
 │   ├── lib/src/errors.dart       DicomException (open base) + the sealed DicomDataException tree (F30)
 │   ├── lib/src/dataset/          Dataset (+ its fromBytes/toBytes entry points, F38), DataElement, Sequence, ReadReport (F28)
@@ -308,6 +308,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-26 ★ | Keyword → identifier: the golden edge cases hold (`SOPInstanceUID` → `sopInstanceUid`, digit runs, …), and no two keywords produce the same identifier | generator golden test plus collision check (F32) |
 | I-27 ★ | Writing text the declared charset can't encode, or non-ASCII text with no (0008,0005), fails with a `DicomWriteException` that names the tag and suggests the fix | writer test (F35) |
 | I-28 ★ | The committed fixtures, golden files and `PROVENANCE.md` reproduce exactly from the pinned tools | `fixtures check` via `scripts/check_fixtures.sh` (in the dry gates) |
+| I-29 ★ | In core, only `vr/value_codec.dart` imports `vr/codec/`; the rest of `lib/` reaches the codec families through it (`export … show`) | architecture test |
 
 ## 9. CI and release
 
