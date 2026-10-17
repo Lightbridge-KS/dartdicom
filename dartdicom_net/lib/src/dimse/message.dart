@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
 
+import '../errors.dart';
+
 /// Command Field (0000,0100) values (PS3.7 §E.1).
 abstract final class CommandField {
   static const cStoreRq = 0x0001;
@@ -64,10 +66,25 @@ final class DimseMessage {
         .takeBytes();
   }
 
-  /// Decodes a command set (with or without its group length).
+  /// Decodes a command set (with or without its group length). Every value
+  /// is decoded now, while a bad one is still the peer's protocol error: a
+  /// command set that doesn't decode, or has no Command Field, is a
+  /// [DimseProtocolException].
   static Dataset decodeCommand(Uint8List bytes) {
-    final ds = Dataset.fromBytes(bytes,
-        transferSyntax: TransferSyntaxes.implicitVrLittleEndian);
+    final Dataset ds;
+    try {
+      ds = Dataset.fromBytes(bytes,
+          transferSyntax: TransferSyntaxes.implicitVrLittleEndian);
+      for (final e in ds.elements) {
+        e.value;
+      }
+      ds.get(DicomTags.commandField) ??
+          (throw DimseProtocolException('a command set has no Command Field'));
+      ds.get(DicomTags.commandDataSetType);
+    } on DicomDataException catch (e) {
+      throw DimseProtocolException(
+          'a command set could not be decoded (${e.message})');
+    }
     ds.remove(DicomTags.commandGroupLength);
     return ds;
   }

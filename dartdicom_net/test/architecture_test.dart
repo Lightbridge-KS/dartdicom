@@ -64,7 +64,10 @@ void main() {
       for (final f
           in Directory('lib').listSync(recursive: true).whereType<File>())
         for (final (i, line) in f.readAsLinesSync().indexed)
-          if (RegExp(r'(?<![\w.])print\(|^(?:var|late)\s').hasMatch(line))
+          // print(), and top-level `var`, `late` or non-const `final`
+          // (a `final class` declares a type, not state).
+          if (RegExp(r'(?<![\w.])print\(|^(?:var|late)\s|^final\s+(?!class\b)')
+              .hasMatch(line))
             '${f.path}:${i + 1}',
     ];
     expect(offenders, isEmpty);

@@ -10,7 +10,7 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M3 `dartdicom_net` P0, planned 2026-10-17 in 11 steps (below); M4 follows. **M2 is done** (2026-10-17, `94d6759`…`c97b788`): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Now:** M4 `dartdicom_pixel` P0. **M3 is done** (2026-10-17, `9f4f10a`…): every exit criterion met; the nightly `interop` job runs the matrix on CI. **M2 is done** (2026-10-17, `94d6759`…`c97b788`): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
 **Next:** M5, 0.1.0 and the first consumer.
 
 ## Roadmap
@@ -176,7 +176,7 @@ Each step ends with the dry and floor gates green, and `just live` after a netwo
 - [x] **8. C-MOVE SCU (N-09)** (`b9be00c`). `sendCMove(query, destination:)` → `Stream<RetrieveProgress>`, with S5 and C-CANCEL like C-GET; the C-MOVE-RQ matches pynetdicom's vector.
   - Live on the first run: Orthanc moved a series into our StorageScp, and `retrieve_and_render --via=move` renders it. `live_gates.sh` runs the example both ways.
   - Compose maps `host.docker.internal` to the host gateway for Linux CI.
-- [x] **9. Interop matrix.** The full matrix passed locally on its first run: 19 live tests, none skipped.
+- [x] **9. Interop matrix** (`595501c`). The full matrix passed locally on its first run: 19 live tests, none skipped.
   - `scripts/interop_peers.sh` configures, seeds and starts DCMTK `dcmqrscp` and `storescp`, and pynetdicom 3.0.4 `qrscp` and `storescp`, then runs the given command with their ports in `INTEROP_*`.
   - **Tests:** one file per peer in `test/live/`, sharing the five operations in `support.dart`. A peer that isn't running skips with a reason, and is required in CI.
   - **CI:** `interop.yml` runs nightly and on demand, with DCMTK from apt and uv.
@@ -187,14 +187,21 @@ Each step ends with the dry and floor gates green, and `just live` after a netwo
     | C-ECHO | ✓ | → `storescp` ✓ | → `qrscp` ✓ |
     | C-FIND / C-GET / C-MOVE | ✓ | → `dcmqrscp` ✓ | → `qrscp` ✓ |
     | C-STORE | ✓ | → `storescp` ✓; `storescu` → ours ✓ | → `storescp` ✓; `storescu` → ours ✓ |
-- [ ] **10. Fuzz, net PHI canary, close.** PDU decoder, assembler and DUL fuzz; the canary over trace and exceptions; I-7's regex.
+- [x] **10. Fuzz, net PHI canary, close.**
+  - **Fuzz:** `dartdicom_net/test/fuzz_test.dart` (I-30) covers `Pdu.decode`, the framer, the assembler, and an established requestor fed mutated PDUs. It found two bugs:
+    - a mutated command set leaked the core's `DicomParseException`;
+    - one without a Command Field leaked `MissingElementException`.
 
-**Exit:**
-- the live interop gate passes C-ECHO, C-FIND, C-GET, C-MOVE and C-STORE against Orthanc, DCMTK and pynetdicom
+    `decodeCommand` now decodes every value at once and turns either into a `DimseProtocolException`. A 20,000-case run is clean, and `just fuzz` covers net too.
+  - **PHI canary:** `phi_canary_test.dart` runs a find, a get, a store and a StorageScp association over the `phi_canary` fixture at hex level. They show no sentinel, its hex, or its instance UID; with `showValues: true` they do, and a planted leak in the DIMSE masking fails the test. Net's exceptions are checked too.
+  - **I-7:** net's architecture test now flags top-level non-const `final`.
+
+**Exit** (all met, 2026-10-17):
+- the live interop gate passes C-ECHO, C-FIND, C-GET, C-MOVE and C-STORE against Orthanc, DCMTK and pynetdicom (19 live tests, locally; `interop.yml` runs it nightly)
 - PDUs are byte-identical to pynetdicom's encoders (I-12), and the state table matches PS3.8's 247 cells (I-13)
 - the net PHI canary passes (I-9), and the PDU decoder is fuzzed
 
-**Tests that will flip:**
+**Tests that flipped:**
 - get/find "cancel aborts" (an M1 limit) → cancel and drain;
 - `fsm_test`'s blank-cell check → all 247 cells; Sta13 + Evt19 → AA-7;
 - `associate(connectTimeout:)` → `Timeouts.connect`;
@@ -251,6 +258,8 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| Under `fake_async`, a closed or cancelled stream (the DUL's transport, `StreamIterator.cancel`) never completes inside the fake zone, so a DUL abort or close never finishes there. Timer tests assert outcomes before the close; the requestor fuzz runs in real time with 50 ms timeouts instead. | `timeout_test.dart`, `fuzz_test.dart`, 2026-10-17 |
+| A command set that doesn't decode is the peer's protocol error, not a data error: the fuzz found a mutated one leaking `DicomParseException`, and one with no Command Field leaking `MissingElementException`. `DimseMessage.decodeCommand` decodes every value at once and throws `DimseProtocolException`. | `dartdicom_net/test/fuzz_test.dart`, 2026-10-17 |
 | Orthanc 1.13.0 performs a C-MOVE over a new association whose calling AE title is its own (`ORTHANC`), and stamps each C-STORE-RQ with the requestor as Move Originator. For a one-instance series it sends only the final C-MOVE-RSP, with no pending one. | `live_test.dart`, `retrieve_and_render --via=move`, 2026-10-17 |
 | Orthanc 1.13.0 ends an association left idle for its `DicomScpTimeout` (30 s by default) with an A-ABORT. Our network timeout (60 s) is longer, so against a stock Orthanc the PACS ends an idle association first; the DUL's pending read notices it while no operation runs (F42). | `live_test.dart`, 2026-10-17 |
 | DCMTK 3.7.0's `dcmdump` raises nothing on the 427 files dartdicom writes from the fixtures and the corpus, except a notice for private sequences in Implicit VR (CP-246, allowlisted). The one source warning, OW on encapsulated Pixel Data in `SC_rgb_rle_16bit.dcm`, is the source's: the as-read write copies it under I-10. | `scripts/written_gate.sh`, 2026-10-17 |
