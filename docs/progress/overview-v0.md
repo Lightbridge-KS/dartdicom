@@ -55,10 +55,10 @@ Planned 2026-10-17. Each step ends with the dry gates green.
   - A sync parser for Explicit and Implicit VR LE: defined and undefined lengths, nested SQ, encapsulated data kept raw, `stopBeforePixels`, ambiguous OB/OW and US/SS.
   - A passthrough writer; `file/` (`DicomFile`, `FileMetaInformation`, I-17); `io.dart` over whole-file bytes.
   - Tests: I-11 and I-10 on the LE fixtures.
-- [x] **3. Pixel.** Bits Allocated 8 decodes too (the same path). The Wasm gate now also compiles `dartdicom_pixel`.
+- [x] **3. Pixel** (`5c2d543`). Bits Allocated 8 decodes too (the same path). The Wasm gate now also compiles `dartdicom_pixel`.
   - `ds.pixels.frame(i)` → `PixelArray`, with BitsStored masking; Modality LUT; linear VOI (PS3.3 C.11.2.1.2.1); MONOCHROME1; `ds.voiWindow()`; `DisplayBuffer` (`gray`, `toRgba()`).
   - Tests: sha256 against golden for the 16-bit monochrome fixtures.
-- [ ] **4. Net through C-ECHO.** Transports (socket, in-memory), PDUs (with role selection), framing, the FSM (requestor rows), ACSE, `ApplicationEntity`, `associate` / `sendCEcho` / `release` / `abort`, and `DimseStatus`.
+- [x] **4. Net through C-ECHO.** The live echo passed on its first run. Transports (socket, in-memory), PDUs (with role selection), framing, the FSM (requestor rows), ACSE, `ApplicationEntity`, `associate` / `sendCEcho` / `release` / `abort`, and `DimseStatus`.
   - Tests: hand-checked PS3.8 vectors, a captured Orthanc A-ASSOCIATE-AC, and a live echo.
 - [ ] **5. DIMSE and C-FIND.** Command sets, the fragmenter, the assembler (every PDV of every P-DATA-TF), and message IDs. `sendCFind` → `Stream<Dataset>` (S5).
   - Tests: a scripted peer, and a live find at STUDY and SERIES level.
@@ -145,6 +145,8 @@ These run in order of demand:
 | Native frames decoded by `dartdicom_pixel` match pydicom 3.0.2's `pixel_array` (sha256, after `correct_unused_bits`) for all 15 native Little Endian fixtures with 8 or 16 bits allocated, multi-frame and interleaved RGB included. An aligned host-order frame is a zero-copy view. | `dartdicom_pixel/test/vs_pydicom_test.dart`, 2026-10-17 |
 | The M1 parser reads all 22 Little Endian fixtures, the 5 RLE (encapsulated) ones included, and agrees with pydicom 3.0.2 on every element of each (I-11 on the slice). Every one of them round-trips byte for byte, except pydicom's `rtdose.dcm` and `rtplan.dcm`: their file meta SOP Instance UID contradicts the dataset's, so the write is refused (I-17, data §5). | `vs_pydicom_test.dart`, `round_trip_test.dart`, 2026-10-17 |
 | pydicom's test files carry non-zero 128-byte preambles (a TIFF header), so `DicomFile` keeps the preamble it read | `round_trip_test.dart`, 2026-10-17 |
+| dartdicom_net associates with Orthanc, C-ECHOes and releases; Orthanc's A-ASSOCIATE-AC is committed as `dartdicom_net/test/vectors/orthanc_associate_ac.bin` | `live_test.dart`, 2026-10-17 |
+| An `InMemoryTransport.close()` must not await `StreamController.close()`: that completes only once the peer reads the done event, which a paused `StreamIterator` never does | association tests hung, 2026-10-17 |
 | Orthanc 1.13.0 (image `orthancteam/orthanc:26.9.1`) as a C-GET SCP accepts a role item with SCU 0 and SCP 1 for each proposed storage class (`Accepted SCP/SCU Role: SCP`). It accepts the first proposed transfer syntax (Explicit VR LE), receives at most 16384-byte PDUs, and identifies itself as DCMTK 3.7.0 (`1.2.276.0.7230010.3.0.3.7.0`, `OFFIS_DCMTK_370`). `getscu` proposed 121 contexts, and all were accepted. | DCMTK `getscu -d`, 2026-10-17 |
 | Orthanc's C-GET of a one-instance series goes: C-STORE-RQ, then a Pending C-GET-RSP (remaining 0, completed 1), then a final Success with **no** Remaining element | DCMTK `getscu -d`, 2026-10-17 |
 | Orthanc's C-FIND matches come in Explicit VR LE and carry (0008,0005) `ISO_IR 100` and (0008,0054) RetrieveAETitle. A SERIES-level query needs StudyInstanceUID. | DCMTK `findscu`, 2026-10-17 |

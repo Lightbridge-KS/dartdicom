@@ -262,7 +262,7 @@ stateDiagram-v2
 
 | Operation | Returns | Final failure status |
 |---|---|---|
-| `sendCEcho()`, `sendCStore(file)` | `Future<DimseStatus>` (sealed: `Success`, `Warning`, `Failure`, `Cancel`) | a value; `.orThrow()` opts into an exception |
+| `sendCEcho()`, `sendCStore(file)` | `Future<DimseStatus>` (sealed: `DimseSuccess`, `DimsePending`, `DimseWarning`, `DimseFailure`, `DimseCancel`; *amended in M1: prefixed, because bare `Success` / `Failure` collide with common result-type packages*) | a value; `.orThrow()` opts into an exception |
 | `sendCGet` / `sendCMove` | `Stream<RetrieveProgress>`; the last event carries the final `DimseStatus` | S5 |
 | `sendCFind` | `Stream<Dataset>` of matches | S5 |
 
