@@ -216,7 +216,8 @@ final sub = assoc.sendCGet(seriesQuery, DirectorySink(dir)).listen(
   (p) => progressBar.value = p.completed / p.total,
 );
 // The user presses Stop:
-await sub.cancel();                       // sends C-CANCEL-RQ (F14)
+await sub.cancel();   // sends C-CANCEL-RQ at once, then completes once the PACS
+                      // confirms; instances already in flight are still stored (F14)
 ```
 
 ### 4.3 Modify and write (e.g. a minimal anonymization)
@@ -250,12 +251,12 @@ File(outPath).writeAsDicomSync(file);   // untouched elements are copied byte fo
 stateDiagram-v2
     [*] --> Connecting: ae.associate()
     Connecting --> Established: A-ASSOCIATE-AC
-    Connecting --> [*]: throws AssociationRejected / DimseTimeout / SocketException
+    Connecting --> [*]: throws AssociationRejected / DimseTimeout (connect, ACSE) / SocketException (refused, unreachable)
     Established --> Established: sendC* operations
     Established --> Released: release()
     Established --> Aborted: abort(), or the peer aborts
     Released --> [*]
-    Aborted --> [*]: pending operations fail with AssociationAborted
+    Aborted --> [*]: pending and later operations fail with the recorded cause (AssociationAborted, DimseTimeout), F42
 ```
 
 **Operation outcomes** (D3): failures of transport, association or protocol **throw**. DIMSE outcomes are **values**.
@@ -333,8 +334,8 @@ Everything is passed per call or per instance. Nothing is global (PRD constraint
 |---|---|---|
 | `ReadOptions` | `stopBeforePixels`, `deferSize`, `tags` (read only these), `force` (no preamble), `hooks` (VR and value conversion), `charset` (override or fallback), `dictionary` (private entries) | C-09, C-13, C-19, F11 |
 | `WriteOptions` | `transferSyntax` (re-encode; default: keep the original), `deflateCodec` | C-11 |
-| `ApplicationEntity` | `aeTitle`, `requestedContexts`, `retrieveStorageClasses` (adds storage contexts and SCP role selection for C-GET), `timeouts` (ACSE, DIMSE, network, connect), `maxPduLength`, `trace` (`TraceSink` with levels DIMSE → PDU/state machine → hex, redacted) | N-01, N-05, N-13, N-14 |
-| `StorageScp` | `port`, `sink`, `acceptFrom` (the calling AE titles allowed) | N-09 |
+| `ApplicationEntity` | `aeTitle`, `requestedContexts`, `retrieveStorageClasses` (adds storage contexts and SCP role selection for C-GET), `timeouts` (`Timeouts`: connect 30 s, ACSE 30 s, DIMSE 30 s per response, network idle 60 s, pynetdicom's values *(amended, M3)*), `maxPduLength`, `deflateCodec` (for sending Deflated, *M3*), `trace` (`Trace(sink, level:, showValues:)`: levels DIMSE → PDU/state machine → hex; no values unless `showValues: true`, F5 *(amended)*) | N-01, N-05, N-13, N-14 |
+| `StorageScp` | `aeTitle`, `port`, `address` (all interfaces by default), `sink`, `acceptFrom` (`ScpPeer(aeTitle, {host})`: the calling AE titles allowed, each optionally pinned to a host, F43 *(amended)*), `maxAssociations`, `timeouts`, `trace` | N-09 |
 | `DirectorySink` | `root`, and `layout` (default: `<Study>/<Series>/<SOP>.dcm`, UIDs only) | N-11, data §6 |
 | `CodecRegistry` | the decoder plugins for a pixel call or decoder | X-05 |
 | `DicomWebClient` | `client` (`http.Client`), `auth` (`AuthProvider`), `retry` (off by default) | W-01, W-06 |
@@ -373,6 +374,7 @@ Everything is passed per call or per instance. Nothing is global (PRD constraint
 - **Read results:** `file.report`, `ReadReport.isClean` / `summary()`, `MissingElementException`, `DicomParseException`, `DicomWriteException`, `DimseFailureException`
 - **Network:** `RetrieveProgress.total` / `status`, `PresentationContexts.*`, `retrieveStorageClasses`, `timeouts`, `trace`
 - **Pixels:** `DisplayBuffer.gray` / `toRgba()` / `width` / `height` *(amended: S8)*
+- **Added in M3 planning (2026-10-17):** `sendCStore(DicomFile)`, `sendCMove(query, destination:)`, `StorageScp.start` / `close` / `port`, `ScpPeer`, `Timeouts`, `DimseTimeout` (with `TimeoutKind`), `Trace` / `TraceSink` / `TraceEvent` / `TraceLevel`, `ReceivedInstance.moveOriginatorAeTitle` / `moveOriginatorMessageId`, `PresentationContexts.storage`, `ApplicationEntity.deflateCodec`; `Association.calledAeTitle` becomes `peerAeTitle`; `Timeouts.connect` replaces `associate(connectTimeout:)`
 - **Added in M2 planning (2026-10-17):** `ds.privateBlock` / `PrivateBlock.tag` (S9), `Uid.generate` / `isValid` (S10), `ds.element(tag)` (the untyped escape hatch F36 otherwise closes), `DicomFile.fromSource(ByteSource)`, `ByteSource` / `BytesSource` / `SourceOpener`, `DeflateCodec`, `SourceChangedException`
 - **Added in M1 planning (2026-10-17):** `Dataset.fromBytes` / `toBytes` (S7), `ds.transferSyntax`, `FileMetaInformation.forInstance` / `toHeaderBytes()`, `ReceivedInstance.sourceAeTitle` / `fileMeta`, `PresentationContexts.commonStorage`
 - **DICOMweb:** `retry`

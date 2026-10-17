@@ -179,7 +179,7 @@ flowchart TD
   - Turning TCP chunks into whole PDUs is a stream transformer.
   - The state machine is the PS3.8 transition table expressed as data: (event, state) → (action, next state). It can be tested without sockets.
 - **C-GET receive loop.** C-GET's C-STORE sub-operations arrive on the same association. The receive loop simply handles them; pynetdicom needs a separate reactor thread to do the same.
-- **StorageScp.** It reuses the acceptor half of `Association`, so the acceptor path is P0 even though the general SCP framework (N-15) is P1.
+- **StorageScp.** It reuses the acceptor half of `Association`, so the acceptor path is P0 even though the general SCP framework (N-15) is P1. It accepts Verification and the storage SOP classes. For each context it prefers an uncompressed syntax and falls back to any compressed one the core knows: instances are stored as received, so even a compressed one is kept, though `dartdicom_pixel` can't yet display it *(M3 decision 4)*.
 - **Datasets** are decoded by `dartdicom` straight from the reassembled PDV bytes. Received instances go to a caller-supplied `InstanceSink` one at a time (N-11). Each one arrives as a `ReceivedInstance` carrying the transfer syntax negotiated for its presentation context, because the dataset bytes themselves don't say how they are encoded. *(amended: [blueprint F10](../structure/01-codebase-blueprint.md#1-reconciliation-findings))*
 
 ### 4.3 `dartdicom_pixel`

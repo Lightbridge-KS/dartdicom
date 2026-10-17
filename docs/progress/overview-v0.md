@@ -10,7 +10,7 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M3 `dartdicom_net` P0 and M4 `dartdicom_pixel` P0, in any order. **M2 is done** (2026-10-17, `94d6759`…): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Now:** M3 `dartdicom_net` P0, planned 2026-10-17 in 11 steps (below); M4 follows. **M2 is done** (2026-10-17, `94d6759`…`c97b788`): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
 **Next:** M5, 0.1.0 and the first consumer.
 
 ## Roadmap
@@ -137,12 +137,39 @@ Each step ends with the dry and floor gates green, and `just live` after a read 
 
 ### M3 `dartdicom_net` P0 complete
 
-- [ ] N-01–N-14: the full state table (I-13), timeouts, C-CANCEL, C-MOVE plus `StorageScp`, the layered trace
-- [ ] Fuzz the PDU decoder
+Planned 2026-10-17. Decisions:
+- C-GET leads in the docs and examples, and C-MOVE is documented beside it; the local Orthanc is the first testing PACS;
+- the interop matrix is full: each operation against each peer that can play the other role, our StorageScp included;
+- the StorageScp accepts `ScpPeer(aeTitle, {host})` peers, and the called AE title must be its own (F43);
+- the StorageScp prefers uncompressed syntaxes and accepts compressed ones as a fallback;
+- the trace shows no values unless `showValues: true` (F5 amended);
+- timeouts are pynetdicom's: connect 30 s, ACSE 30 s (ARTIM too), DIMSE 30 s per response, network idle 60 s; expiry aborts and throws;
+- a cancelled C-GET keeps storing sub-operations already in flight (F14 amended).
+
+Each step ends with the dry and floor gates green, and `just live` after a network change.
+
+- [x] **0. Docs.** The decisions above; blueprint F5, F14 amended, F42 (the DUL's reader model), F43 (StorageScp peers), `trace/` at rank 0, I-9/I-12/I-13 references; surface names for M3.
+- [ ] **1. pynetdicom vectors (I-12).** `fixtures net-vectors` (pynetdicom 3.0.4) → `fixtures/data/net/vectors.json` and `transition_table.json`; the typed 0x53 item; byte identity for every PDU and command set M3 uses.
+- [ ] **2. Reader model, full table, acceptor DUL (N-02, I-13, F42).** One-PDU read-ahead; a recorded terminal cause; all 123 PS3.8 cells (Sta13 + Evt19 → AA-7, Sta13 + Evt6 added); the acceptor half and release collisions.
+- [ ] **3. Timeouts (N-13).** `Timeouts`; `DimseTimeout(TimeoutKind)`; timers inside the DUL and channel; `fake_async` tests.
+- [ ] **4. C-CANCEL (N-07, F14).** Whole-message send queue; `_operation` on a `StreamController` with back-pressure; cancel then drain.
+- [ ] **5. Trace (N-14).** `Trace`, `TraceSink`, `TraceEvent` (DIMSE, PDU), levels; no values by default.
+- [ ] **6. C-STORE SCU (N-10).** `sendCStore(DicomFile)`; SCU+SCP roles for classes both requested and retrieved; `ApplicationEntity.deflateCodec`.
+- [ ] **7. StorageScp (N-09, F3).** The listener, acceptor ACSE, the serve loop, the shared store handler; `peerAeTitle`; concurrency-safe `DirectorySink`; an acceptor fuzz.
+- [ ] **8. C-MOVE SCU (N-09).** `sendCMove`; compose `host-gateway`; `retrieve_and_render --via=move`.
+- [ ] **9. Interop matrix.** DCMTK (`dcmqrscp`, `storescp`, `storescu`) and pynetdicom (`qrscp`, `storescp`, `storescu`) peers via `scripts/interop_peers.sh`; `interop.yml` nightly.
+- [ ] **10. Fuzz, net PHI canary, close.** PDU decoder, assembler and DUL fuzz; the canary over trace and exceptions; I-7's regex.
 
 **Exit:**
 - the live interop gate passes C-ECHO, C-FIND, C-GET, C-MOVE and C-STORE against Orthanc, DCMTK and pynetdicom
-- PDUs are byte-identical to pynetdicom's encoders (I-12)
+- PDUs are byte-identical to pynetdicom's encoders (I-12), and the state table matches PS3.8's 247 cells (I-13)
+- the net PHI canary passes (I-9), and the PDU decoder is fuzzed
+
+**Tests that will flip:**
+- get/find "cancel aborts" (an M1 limit) → cancel and drain;
+- `fsm_test`'s blank-cell check → all 247 cells; Sta13 + Evt19 → AA-7;
+- `associate(connectTimeout:)` → `Timeouts.connect`;
+- the live gate's `perl alarm` deadlines become a backstop.
 
 ### M4 `dartdicom_pixel` P0 complete
 
@@ -180,7 +207,8 @@ These run in order of demand:
 
 - **Before 1.0:** does PN become `PersonName`, and do DA/TM/DT become date types (C-15)? Typed tags fix each VR's Dart type in every generated constant, so this is free only before 1.0 (data §8).
 - **Before 1.0:** should the wrong value type for a typed tag fail to compile (I-24)? `ds.set(DicomTags.rows, 'x')` compiles today, because Dart widens `T` to `Object`. `set` and `setAll` refuse it at runtime with an `ArgumentError`. A compile-time guard would change the public writing API, for example setters bound to the tag, so that `T` comes from the tag alone. `test/compile_fail/` pins the gap, so closing it means editing that file.
-- **M3:** which PACS products must the first consumer support, and do they support C-GET? The answer settles whether the default retrieve path is C-GET or C-MOVE. The tracer uses C-GET, which the test Orthanc supports (confirmed 2026-10-17).
+
+**Answered 2026-10-17, planning M3:** C-GET stays the retrieve path the docs and examples lead with, and C-MOVE is documented beside it. The local Orthanc is the first testing PACS, and the first consumer's own PACS is checked at M5.
 
 **Answered 2026-10-17, planning M2:** when a file is rewritten, its meta names dartdicom (0002,0012/0013) only if the file changed: an edit, a re-encode, or an edited meta. Otherwise the pair is kept as read, so I-10 holds. A missing or empty pair is filled, both tags together.
 
