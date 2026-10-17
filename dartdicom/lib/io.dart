@@ -88,6 +88,10 @@ extension DicomFileIO on File {
       writeAsBytesSync(file.toBytes(options: _withZLib(options)), flush: true);
 }
 
+/// [options] with zlib as the Deflate codec if they name none; every other
+/// option is kept.
 WriteOptions _withZLib(WriteOptions options) => options.deflateCodec != null
     ? options
-    : const WriteOptions(deflateCodec: ZLibDeflateCodec());
+    : WriteOptions(
+        transferSyntax: options.transferSyntax,
+        deflateCodec: const ZLibDeflateCodec());

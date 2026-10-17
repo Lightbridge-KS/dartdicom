@@ -114,6 +114,43 @@ void main() {
     });
   });
 
+  group('writeAsDicom and writeAsDicomSync', () {
+    final source = DicomFile.fromBytes(
+        File('../fixtures/data/synthetic/ct_signed_explicit_le.dcm')
+            .readAsBytesSync());
+
+    Future<List<File>> writeBoth(WriteOptions options) async => [
+          await File('${dir.path}/async.dcm')
+              .writeAsDicom(source, options: options),
+          File('${dir.path}/sync.dcm')
+            ..writeAsDicomSync(source, options: options),
+        ];
+
+    test('write in the transfer syntax the options ask for', () async {
+      const options =
+          WriteOptions(transferSyntax: TransferSyntaxes.implicitVrLittleEndian);
+      for (final written in await writeBoth(options)) {
+        final back = DicomFile.fromBytes(written.readAsBytesSync());
+        expect(back.meta.transferSyntaxUid,
+            TransferSyntaxes.implicitVrLittleEndian);
+        expect(back.dataset.get(DicomTags.rows),
+            source.dataset.get(DicomTags.rows));
+      }
+    });
+
+    test('compress Deflated with zlib when no codec is given', () async {
+      const options = WriteOptions(
+          transferSyntax: TransferSyntaxes.deflatedExplicitVrLittleEndian);
+      for (final written in await writeBoth(options)) {
+        final back = DicomFile.fromBytes(written.readAsBytesSync());
+        expect(back.meta.transferSyntaxUid,
+            TransferSyntaxes.deflatedExplicitVrLittleEndian);
+        expect(back.dataset.get(DicomTags.rows),
+            source.dataset.get(DicomTags.rows));
+      }
+    });
+  });
+
   test('a partial read is refused on write, so no data is dropped', () {
     final head =
         big.readAsDicomSync(options: const ReadOptions(stopBeforePixels: true));
