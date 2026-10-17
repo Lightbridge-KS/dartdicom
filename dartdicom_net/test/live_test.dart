@@ -49,6 +49,23 @@ void main() {
     await expectLater(assoc.sendCEcho(), throwsA(isA<AssociationAborted>()));
   }, skip: _skip, timeout: const Timeout(Duration(seconds: 60)));
 
+  test('a find cancelled on its first match leaves the association usable',
+      () async {
+    const ae = ApplicationEntity(aeTitle: 'DARTDICOM', requestedContexts: [
+      ...PresentationContexts.verification,
+      ...PresentationContexts.studyRootQueryRetrieve,
+    ]);
+    final assoc = await ae.associate(_host, _port, aeTitle: _aet);
+    final first = await assoc
+        .sendCFind(Dataset()
+          ..set(DicomTags.queryRetrieveLevel, 'STUDY')
+          ..setEmpty(DicomTags.studyInstanceUid))
+        .first;
+    expect(first.get(DicomTags.studyInstanceUid), isNotNull);
+    expect(await assoc.sendCEcho(), isA<DimseSuccess>());
+    await assoc.release();
+  }, skip: _skip);
+
   test('C-FIND at STUDY, then SERIES level', () async {
     const ae = ApplicationEntity(
         aeTitle: 'DARTDICOM',

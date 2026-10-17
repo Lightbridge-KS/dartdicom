@@ -78,6 +78,13 @@ final class DimseMessage {
       'context $contextId${dataset == null ? '' : ', ${dataset!.length}-byte dataset'})';
 }
 
+/// C-CANCEL-RQ for request [messageId] (PS3.7 §9.3.2.3): only the command
+/// field, the ID it responds to and "no dataset", as pynetdicom sends it.
+Dataset cancelCommand(int messageId) => Dataset()
+  ..set(DicomTags.commandField, CommandField.cCancelRq)
+  ..set(DicomTags.messageIdBeingRespondedTo, messageId)
+  ..set(DicomTags.commandDataSetType, noDataset);
+
 /// A request's command set: [field], [messageId], the SOP class, and
 /// whether a dataset follows.
 Dataset requestCommand(int field, int messageId, Uid sopClass,

@@ -5,7 +5,6 @@ import 'dart:async';
 import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_net/dartdicom_net.dart';
 import 'package:dartdicom_net/src/dimse/message.dart';
-import 'package:dartdicom_net/src/pdu/pdus.dart';
 import 'package:test/test.dart';
 
 import 'support/peer.dart';
@@ -103,17 +102,6 @@ void main() {
     // The association is still usable afterwards.
     unawaited(_answer(peer, 1));
     expect(await assoc.sendCFind(_query).length, 1);
-  });
-
-  test('cancelling the stream aborts the association (M1)', () async {
-    final (assoc, peer) = await _associate();
-    unawaited(_answer(peer, 5));
-    await assoc.sendCFind(_query).first;
-    Pdu next;
-    do {
-      next = await peer.next();
-    } while (next is! Abort);
-    expect(next, isA<Abort>());
   });
 
   test('two queries at once: the second is a StateError', () async {

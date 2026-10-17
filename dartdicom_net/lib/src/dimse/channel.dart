@@ -25,12 +25,19 @@ final class DimseChannel {
   final int _peerMaxPduLength;
   final _assembler = Assembler();
   final _received = Queue<DimseMessage>();
+  Future<void> _sending = Future.value();
 
-  /// Sends [message], fragmented for the peer.
-  Future<void> send(DimseMessage message) async {
-    for (final pdu in fragment(message, _peerMaxPduLength)) {
-      await _dul.send(pdu);
-    }
+  /// Sends [message], fragmented for the peer. Messages go out whole, in
+  /// the order sent: a C-CANCEL-RQ never lands between another message's
+  /// PDUs (PS3.8 §9.3.5).
+  Future<void> send(DimseMessage message) {
+    final sent = _sending.then((_) async {
+      for (final pdu in fragment(message, _peerMaxPduLength)) {
+        await _dul.send(pdu);
+      }
+    });
+    _sending = sent.then((_) {}, onError: (Object _) {});
+    return sent;
   }
 
   /// The next whole DIMSE message from the peer. Each wait for a PDU is

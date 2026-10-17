@@ -8,6 +8,7 @@ import '../dimse/message.dart';
 import '../dimse/status.dart';
 import '../dul/dul.dart';
 import '../errors.dart';
+import '../timeouts.dart';
 import '../pdu/pdus.dart';
 import '../sink/instance_sink.dart';
 import 'presentation_contexts.dart';
@@ -67,8 +68,8 @@ final class Association {
   /// Cancel; a final Failure is a [DimseFailureException] stream error, so
   /// a failed query never looks like "no matches" (surface S5).
   ///
-  /// Cancelling the subscription aborts the association in this version
-  /// (C-CANCEL comes later).
+  /// Cancelling the subscription sends C-CANCEL-RQ; `cancel()` completes
+  /// once the peer has confirmed it (F14).
   Stream<Dataset> sendCFind(Dataset query,
           {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) =>
       _operation('C-FIND', model.find, CommandField.cFindRq, query,
@@ -104,8 +105,9 @@ final class Association {
   ///
   /// Emits a [RetrieveProgress] for each response; the last carries the
   /// final status. A final Failure is then also a [DimseFailureException]
-  /// stream error (surface S5). Cancelling the subscription aborts the
-  /// association in this version.
+  /// stream error (surface S5). Cancelling the subscription sends
+  /// C-CANCEL-RQ; instances already in flight are still stored, and
+  /// `cancel()` completes once the peer has confirmed it (F14).
   Stream<RetrieveProgress> sendCGet(Dataset query, InstanceSink sink,
           {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) =>
       _operation('C-GET', model.get, CommandField.cGetRq, query,
@@ -135,8 +137,19 @@ final class Association {
   /// then hands each message that arrives to [step] until one is the last.
   ///
   /// The stream emits each step's item. After the last, a failure is a
-  /// [DimseFailureException] stream error (surface S5). Ending any other way
-  /// (a cancelled subscription, an error) aborts the association.
+  /// [DimseFailureException] stream error (surface S5). An error aborts the
+  /// association.
+  ///
+  /// **Cancel** (F14): cancelling the subscription before the last response
+  /// sends C-CANCEL-RQ at once, then reads on to the final response, still
+  /// running [step] (a C-GET keeps storing what is in flight) but emitting
+  /// nothing. The drain is bounded by one DIMSE timeout from the cancel; past
+  /// it, or on any error, the association is aborted and the cause recorded
+  /// for the next call. `cancel()` itself always completes normally, once
+  /// the association is free.
+  ///
+  /// **Back-pressure:** while the subscription is paused, nothing more is
+  /// read from the peer.
   Stream<T> _operation<T>(
       String name,
       Uid sopClass,
@@ -144,32 +157,86 @@ final class Association {
       Dataset query,
       Future<_Step<T>> Function(
               DimseMessage message, int id, AcceptedContext context)
-          step) async* {
-    final context = _contextFor(sopClass, name);
-    _enter();
+          step,
+      {void Function(Dataset command)? extend}) {
+    late final StreamController<T> out;
+    final done = Completer<void>();
+    var started = false;
     var finished = false;
-    try {
-      final id = _nextMessageId();
-      await _channel.send(DimseMessage(
-          context.id,
-          requestCommand(command, id, sopClass,
-              hasDataset: true, priority: mediumPriority),
-          query.toBytes(transferSyntax: context.transferSyntax)));
-      while (true) {
-        final (:item, :last, :failure) =
-            await step(await _channel.receive(), id, context);
-        // Marked before the last item is yielded, so cancelling on that item
-        // doesn't abort an operation that is already complete.
-        if (last) finished = true;
-        if (item != null) yield item;
-        if (!last) continue;
-        if (failure != null) throw DimseFailureException(failure);
+    var cancelled = false;
+    Completer<void>? resumed;
+    late int id;
+    late AcceptedContext context;
+
+    Future<void> run() async {
+      try {
+        context = _contextFor(sopClass, name);
+        _enter();
+      } on Object catch (e, stack) {
+        out.addError(e, stack);
+        done.complete();
+        await out.close();
         return;
       }
-    } finally {
-      _exit();
-      if (!finished) await _dul.abort();
+      try {
+        id = _nextMessageId();
+        final request = requestCommand(command, id, sopClass,
+            hasDataset: true, priority: mediumPriority);
+        extend?.call(request);
+        started = true;
+        await _channel.send(DimseMessage(context.id, request,
+            query.toBytes(transferSyntax: context.transferSyntax)));
+        while (true) {
+          while (out.isPaused && !cancelled) {
+            await (resumed ??= Completer<void>()).future;
+          }
+          final (:item, :last, :failure) =
+              await step(await _channel.receive(), id, context);
+          // Marked before the last item is emitted, so cancelling on that
+          // item cancels nothing.
+          if (last) finished = true;
+          if (!cancelled && item != null) out.add(item);
+          if (!last) continue;
+          if (!cancelled && failure != null) {
+            out.addError(DimseFailureException(failure));
+          }
+          break;
+        }
+      } on Object catch (e, stack) {
+        if (!cancelled) out.addError(e, stack);
+        await _dul.abort(because: e is DimseException ? e : null);
+      } finally {
+        _exit();
+        done.complete();
+        if (!cancelled) await out.close();
+      }
     }
+
+    out = StreamController<T>(
+      onListen: () => unawaited(run()),
+      onResume: () {
+        resumed?.complete();
+        resumed = null;
+      },
+      onCancel: () {
+        if (finished || done.isCompleted) return null;
+        cancelled = true;
+        resumed?.complete();
+        resumed = null;
+        if (started) {
+          unawaited(_channel
+              .send(DimseMessage(context.id, cancelCommand(id)))
+              .then((_) {}, onError: (Object _) {}));
+        }
+        final dimse = _dul.timeouts.dimse;
+        final deadline = Timer(
+            dimse,
+            () => unawaited(
+                _dul.abort(because: DimseTimeout(TimeoutKind.dimse, dimse))));
+        return done.future.whenComplete(deadline.cancel);
+      },
+    );
+    return out.stream;
   }
 
   /// Answers one C-STORE sub-operation of a C-GET: [sink] takes the

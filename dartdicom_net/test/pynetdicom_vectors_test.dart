@@ -84,6 +84,15 @@ void main() {
             reason: name);
       }
     });
+
+    test('cancelCommand builds C-CANCEL-RQ', () {
+      final v = vectors.firstWhere((v) => v['name'] == 'C-CANCEL-RQ');
+      final expected = _command((v['command']! as List<Object?>).cast());
+      final built =
+          cancelCommand(expected.require(DicomTags.messageIdBeingRespondedTo));
+      expect(_hexOf(DimseMessage(1, built).encodeCommand()),
+          _hexOf(DimseMessage(1, expected).encodeCommand()));
+    });
   });
 }
 
