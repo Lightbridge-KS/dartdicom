@@ -12,6 +12,7 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
 
+import '../support/bytes.dart';
 import '../support/fixtures.dart';
 
 final _marker = RegExp('zxqv', caseSensitive: false);
@@ -143,21 +144,11 @@ void main() {
   test('no read report shows a value', () {
     // The name and the private text as UN, each with a VR the reader knows
     // (unReplaced, private creator LO included), then a value cut short.
-    List<int> un(int tag, String text) {
-      final value = utf8.encode(text.length.isOdd ? '$text ' : text);
-      return [
-        tag >> 16 & 0xFF, tag >> 24, tag & 0xFF, tag >> 8 & 0xFF, //
-        ...'UN'.codeUnits, 0, 0,
-        value.length & 0xFF, value.length >> 8, 0, 0,
-        ...value,
-      ];
-    }
-
     final repaired = Dataset.fromBytes(
         Uint8List.fromList([
-          ...un(0x00090010, 'ZXQV CREATOR'),
-          ...un(0x00100010, 'ZXQVFamily^ZXQVGiven'),
-          ...un(0x00100020, 'ZXQV-ID-0001'),
+          ...ex(0x00090010, 'UN', text('ZXQV CREATOR')),
+          ...ex(0x00100010, 'UN', text('ZXQVFamily^ZXQVGiven')),
+          ...ex(0x00100020, 'UN', text('ZXQV-ID-0001')),
         ]),
         transferSyntax: TransferSyntaxes.explicitVrLittleEndian);
     expect(repaired.report.repairs.map((r) => r.kind),
@@ -176,16 +167,11 @@ void main() {
   });
 }
 
-/// A DS element read from Explicit VR bytes holding [text].
-DataElement _dsElement(String text) {
-  final value = utf8.encode(text.length.isOdd ? '$text ' : text);
+/// A (0018,0050) Slice Thickness DS element read from Explicit VR bytes
+/// holding [value].
+DataElement _dsElement(String value) {
   final ds = Dataset.fromBytes(
-      Uint8List.fromList([
-        0x18, 0x00, 0x50, 0x00, // (0018,0050) Slice Thickness, DS
-        ...'DS'.codeUnits,
-        value.length, 0,
-        ...value,
-      ]),
+      Uint8List.fromList(ex(0x00180050, 'DS', text(value))),
       transferSyntax: TransferSyntaxes.explicitVrLittleEndian);
   return ds.element(DicomTags.sliceThickness)!;
 }

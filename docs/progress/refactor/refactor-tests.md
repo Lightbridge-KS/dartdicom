@@ -3,7 +3,7 @@ summary: Core tests refactor. dartdicom/test mirrors lib/src, the whole-library 
 read_when:
   - Planning or executing the core tests refactor; reviewing its evidence
   - Deciding where a new core test, gate or curated list goes
-status: in progress
+status: complete
 date: 2026-10-18
 ---
 # Core tests refactor
@@ -26,8 +26,8 @@ test/
 
 - [x] **T1 + T2** (`b43fabc`). Move the tests into the mirrored folders and `gates/`. Move `writer_test.dart`'s file-meta groups (I-17, implementation identity) into `file/dicom_file_test.dart`, with the two I-17 groups as one. Pure moves.
 - [x] **T3 (option B)** (`9f45b24`). `corpus_expected.txt` and `dcmdump_allowlist.txt` become const records in `gates/expected.dart`, so a reason is required by the type. Both line parsers go away.
-- [x] **T4** (this commit). `support/fixtures.dart` holds the fixture root, `fixtureSet`, `fixture`/`readFixture`/`fixtureDirectory`, `fixtureName` and `goldenRecords`. It replaces the root path written 16× in 9 files, three fixture listings, two golden listings and the duplicated `_fixture` loader. `goldenRecords` lives here, not in `golden.dart`, so `golden.dart` stays free of `dart:io`.
-- [ ] **T5.** Explore `support/bytes.dart`: one byte-building kit, shared by `lenient_test` and `phi_canary_test`.
+- [x] **T4** (`e6fbbce`). `support/fixtures.dart` holds the fixture root, `fixtureSet`, `fixture`/`readFixture`/`fixtureDirectory`, `fixtureName` and `goldenRecords`. It replaces the root path written 16× in 9 files, three fixture listings, two golden listings and the duplicated `_fixture` loader. `goldenRecords` lives here, not in `golden.dart`, so `golden.dart` stays free of `dart:io`.
+- [x] **T5** (this commit). `support/bytes.dart` holds the byte-building kit: `u16`, `u32`, `tag`, `text`, `ex`, `im`, `item`, `undefinedItem`, `sequenceEnd` and `undefinedLength`, with short names and a doc comment on each. It is platform-free, and it keeps its own long-VR table and padding. `lenient_test` keeps its scenario policy (`_uids`, `_meta`, `_file`), and `phi_canary_test`'s two hand-built headers become kit calls.
 
 Preserve:
 - Every test still runs: the same names on the VM and on node, except the I-17 tests that T2 regroups.
@@ -49,5 +49,7 @@ T1 + T2 (`b43fabc`): the same 350 names on the VM and 174 on node. Only the two 
 T3 (`9f45b24`): the Dart regex is identical to the `.txt` one, after that parser's whitespace join. Planting a passing corpus file in `corpusExpectedFailures` fails the corpus test ("these now pass"). Emptying `dcmdumpAllowlist` fails `just written --corpus` on the CP-246 warning, while the fixture-only gate never raises it.
 
 T4: the same 350 names on the VM. `just fuzz` at the default seed gives identical counts (mutated 85,465 read / 14,545 refused; force 97,175 / 2,830), so the seed order held. `just dry`, `just written --corpus` and the corpus test (85 of 85) pass.
+
+T5: the canary's four kit-built elements are byte-identical to the old hand-built ones, checked by a throwaway script that ran both. The same 350 names on the VM and 174 on node. A planted value leak in `DataElement.toString` still fails three canary tests, among them the read-report test over the kit-built UN elements. `just dry` passes.
 
 On completion: set `status: complete`, then ask whether to prune this tracker.
