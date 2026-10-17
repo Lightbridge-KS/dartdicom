@@ -6,10 +6,12 @@ readme = "README.md"
 requires-python = ">=3.13"
 # Never published: this is repo tooling. The classifier makes PyPI refuse it.
 classifiers = ["Private :: Do Not Upload"]
-# pydicom and numpy are pinned exactly: their output *is* the golden data.
+# pydicom, numpy and pynetdicom are pinned exactly: their output *is* the
+# golden data and the net vectors.
 dependencies = [
     "numpy==2.5.4",
     "pydicom==3.0.2",
+    "pynetdicom[apps]==3.0.4",
     "typer>=0.27.3",
 ]
 

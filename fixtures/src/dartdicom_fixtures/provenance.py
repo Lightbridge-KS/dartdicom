@@ -26,6 +26,8 @@ def render(rows: list[Row], data_root: Path) -> str:
         "- `pydicom/`: unchanged copies of pydicom's bundled test files",
         "  (pydicom is MIT-licensed; the files come from public samples that",
         "  the pydicom authors downsized and de-identified).",
+        "- `net/`: pynetdicom's encodings of the PDUs and DIMSE messages",
+        "  dartdicom_net uses, with the inputs that built them (MIT).",
         "",
         "| File | Source | Notes | SHA-256 |",
         "|---|---|---|---|",

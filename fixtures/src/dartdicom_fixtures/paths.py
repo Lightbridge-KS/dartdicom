@@ -14,6 +14,7 @@ DATA = PROJECT / "data"
 SYNTHETIC = "synthetic"
 PYDICOM = "pydicom"
 GOLDEN = "golden"
+NET = "net"
 PROVENANCE = "PROVENANCE.md"
 
 

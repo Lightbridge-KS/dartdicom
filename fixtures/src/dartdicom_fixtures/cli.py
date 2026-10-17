@@ -10,8 +10,8 @@ from typing import Annotated
 
 import typer
 
-from . import corpus, curated, golden, pydicom_dictionary, scenarios
-from .paths import DATA, GOLDEN, PROVENANCE, PYDICOM, SYNTHETIC, cache_root
+from . import corpus, curated, golden, net_vectors, pydicom_dictionary, scenarios
+from .paths import DATA, GOLDEN, NET, PROVENANCE, PYDICOM, SYNTHETIC, cache_root
 from .provenance import Row, render
 
 app = typer.Typer(
@@ -25,7 +25,8 @@ app.add_typer(corpus_app, name="corpus")
 
 
 def build_into(data_root: Path) -> list[Row]:
-    """Writes the synthetic and curated fixtures plus PROVENANCE.md."""
+    """Writes the synthetic and curated fixtures, the net vectors, and
+    PROVENANCE.md."""
     rows: list[Row] = []
     for group in (SYNTHETIC, PYDICOM):
         (data_root / group).mkdir(parents=True, exist_ok=True)
@@ -35,6 +36,14 @@ def build_into(data_root: Path) -> list[Row]:
     for name, note in curated.FILES.items():
         curated.copy(name, data_root / PYDICOM)
         rows.append(Row(f"{PYDICOM}/{name}", "pydicom 3.0.2 test data", note))
+    for path in net_vectors.write(data_root / NET):
+        rows.append(
+            Row(
+                f"{NET}/{path.name}",
+                "pynetdicom 3.0.4 encodings",
+                net_vectors.describe(path.name),
+            )
+        )
     (data_root / PROVENANCE).write_text(render(rows, data_root))
     return rows
 

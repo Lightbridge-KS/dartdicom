@@ -8,6 +8,8 @@ freely redistributable; none holds real patient data.
 - `pydicom/`: unchanged copies of pydicom's bundled test files
   (pydicom is MIT-licensed; the files come from public samples that
   the pydicom authors downsized and de-identified).
+- `net/`: pynetdicom's encodings of the PDUs and DIMSE messages
+  dartdicom_net uses, with the inputs that built them (MIT).
 
 | File | Source | Notes | SHA-256 |
 |---|---|---|---|
@@ -39,3 +41,5 @@ freely redistributable; none holds real patient data.
 | `pydicom/SC_rgb_rle_2frame.dcm` | pydicom 3.0.2 test data | RGB, RLE, 2 frames | `cc9cd098ab099b5f…` |
 | `pydicom/SC_rgb_rle_16bit.dcm` | pydicom 3.0.2 test data | RGB, RLE, 16-bit | `86504bea4a8cea36…` |
 | `pydicom/SC_rgb_rle_32bit_2frame.dcm` | pydicom 3.0.2 test data | RGB, RLE, 32-bit, 2 frames | `5c9aa606982eadb1…` |
+| `net/vectors.json` | pynetdicom 3.0.4 encodings | PDUs and DIMSE messages with their inputs, for I-12 | `d7abb8448a5c4728…` |
+| `net/transition_table.json` | pynetdicom 3.0.4 encodings | the PS3.8 state table as pynetdicom encodes it, for I-13 | `3c877326fd5e2c67…` |

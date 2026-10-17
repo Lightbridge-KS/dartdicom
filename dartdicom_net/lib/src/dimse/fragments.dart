@@ -7,10 +7,11 @@ import '../pdu/pdus.dart';
 import 'message.dart';
 
 /// Splits [message] into P-DATA-TF PDUs that fit the peer's
-/// [maxPduLength] (0 means no limit): the command first, then the dataset,
-/// one PDV per PDU (PS3.8 §9.3.5). Each PDV costs 6 bytes of the PDU.
+/// [maxPduLength]: the command first, then the dataset, one PDV per PDU
+/// (PS3.8 §9.3.5). Each PDV costs 6 bytes of the PDU. With no limit (0),
+/// the command and the dataset are one PDV each, as pynetdicom sends them.
 List<PDataTf> fragment(DimseMessage message, int maxPduLength) {
-  final chunk = (maxPduLength == 0 ? 1 << 20 : maxPduLength) - 6;
+  final chunk = maxPduLength == 0 ? 0x7FFFFFFF : maxPduLength - 6;
   if (chunk < 1) {
     throw DimseProtocolException(
         'the peer\'s maximum PDU length ($maxPduLength) is too small');
