@@ -15,6 +15,7 @@ import '../vr/value_codec.dart';
 import '../vr/vr.dart';
 import '../write/writer.dart';
 import 'element.dart';
+import 'private_block.dart';
 import 'sequence.dart';
 
 /// A DICOM dataset: data elements kept in ascending tag order (C-06).
@@ -140,6 +141,141 @@ final class Dataset {
     final removed = _elements.remove(tag.value) != null;
     _modified |= removed;
     return removed;
+  }
+
+  /// The element with [tag], or `null`: the untyped escape hatch, e.g. for
+  /// code that walks elements or looks them up by keyword. Its `value` is in
+  /// the form the VR → Dart contract gives (data §3.4).
+  DataElement? element(Tag tag) => _elements[tag.value];
+
+  /// Every value of the untyped [tag] as text (e.g. a private element), or
+  /// an empty list.
+  ///
+  /// The untyped getters read tags with no typed constant: private tags, and
+  /// tags whose VRs disagree on a Dart type (`US or OW`). A typed tag throws
+  /// an [ArgumentError] naming its typed accessor (blueprint F36).
+  List<String> getStrings(Tag tag) =>
+      _list(tag, ValueFamily.string, 'getStrings');
+
+  /// Every value of the untyped [tag] as an `int` (IS, US, SS, UL, SL).
+  List<int> getInts(Tag tag) => _list(tag, ValueFamily.int, 'getInts');
+
+  /// Every value of the untyped [tag] as a `double` (DS, FL, FD).
+  List<double> getDoubles(Tag tag) =>
+      _list(tag, ValueFamily.double, 'getDoubles');
+
+  /// Every value of the untyped [tag] as a `BigInt` (SV, UV).
+  List<BigInt> getBigInts(Tag tag) =>
+      _list(tag, ValueFamily.bigInt, 'getBigInts');
+
+  /// Every value of the untyped [tag] as a [Tag] (AT).
+  List<Tag> getTags(Tag tag) => _list(tag, ValueFamily.tag, 'getTags');
+
+  /// The bytes of the untyped [tag] (OB, OW, UN, …), or `null` if absent.
+  Uint8List? getBytes(Tag tag) =>
+      _single<Uint8List>(tag, ValueFamily.bytes, 'getBytes');
+
+  /// The items of the untyped [tag] (SQ), or `null` if absent.
+  Sequence? getSequence(Tag tag) =>
+      _single<Sequence>(tag, ValueFamily.sequence, 'getSequence');
+
+  /// Sets [tag] with an explicit [vr] (surface S1): for tags with no typed
+  /// constant, such as private elements.
+  ///
+  /// [values] is [vr]'s form in the VR → Dart contract: a `List<String>`,
+  /// `List<int>`, `List<double>`, `List<BigInt>` or `List<Tag>`, a
+  /// `Uint8List`, or a [Sequence]. Throws an [ArgumentError] if it isn't, or
+  /// if the dictionary knows [tag] and doesn't allow [vr].
+  void setRaw(Tag tag, Vr vr, Object values) {
+    final entry = Dictionary.standard.entry(tag);
+    if (entry != null && entry.vrs.isNotEmpty && !entry.vrs.contains(vr)) {
+      throw ArgumentError.value(vr.code, 'vr',
+          '${describeTag(tag)} allows ${entry.vrs.map((v) => v.code).join(' or ')}');
+    }
+    final canonical = switch ((familyOf(vr), values)) {
+      (ValueFamily.string, final List<String> v) =>
+        List<String>.unmodifiable(v),
+      (ValueFamily.int, final List<int> v) => List<int>.unmodifiable(v),
+      (ValueFamily.double, final List<double> v) =>
+        List<double>.unmodifiable(v),
+      (ValueFamily.bigInt, final List<BigInt> v) =>
+        List<BigInt>.unmodifiable(v),
+      (ValueFamily.tag, final List<Tag> v) => List<Tag>.unmodifiable(v),
+      (ValueFamily.bytes, final Uint8List v) => v,
+      (ValueFamily.sequence, final Sequence v) => v,
+      _ => throw ArgumentError.value(values.runtimeType.toString(), 'values',
+          'is not the form ${vr.code} values take (data architecture §3.4)'),
+    };
+    _elements[tag.value] = DataElement(tag, vr, canonical);
+    _modified = true;
+  }
+
+  /// The block of private elements [creator] reserves in the odd [group]
+  /// (surface S9), or `null` if the dataset has none. With [create], a
+  /// missing block is reserved in the first free slot.
+  ///
+  /// Throws an [ArgumentError] for a group that isn't private or an empty
+  /// creator, and a [StateError] if [create] finds all 240 slots taken.
+  PrivateBlock? privateBlock(int group, String creator, {bool create = false}) {
+    if (!Tag.of(group, 0x0010).isPrivate) {
+      throw ArgumentError.value(
+          group.toRadixString(16), 'group', 'is not a private (odd) group');
+    }
+    if (creator.isEmpty) {
+      throw ArgumentError.value(creator, 'creator', 'must not be empty');
+    }
+    int? free;
+    for (var slot = 0x10; slot <= 0xFF; slot++) {
+      final element = _elements[Tag.of(group, slot).value];
+      if (element == null) {
+        free ??= slot;
+        continue;
+      }
+      final value = element.value;
+      if (value is List<String> && value.isNotEmpty && value.first == creator) {
+        return PrivateBlock(group, creator, slot);
+      }
+    }
+    if (!create) return null;
+    if (free == null) {
+      throw StateError('group ${group.toRadixString(16)} has no free private '
+          'creator slot');
+    }
+    setRaw(Tag.of(group, free), Vr.LO, [creator]);
+    return PrivateBlock(group, creator, free);
+  }
+
+  List<T> _list<T extends Object>(
+      Tag tag, ValueFamily family, String accessor) {
+    _rejectTyped(tag, accessor);
+    final element = _elements[tag.value];
+    if (element == null) return const [];
+    final value = element.value;
+    if (familyOf(element.vr) == family && value is List<T>) return value;
+    throw _wrongType(element, T);
+  }
+
+  T? _single<T extends Object>(Tag tag, ValueFamily family, String accessor) {
+    _rejectTyped(tag, accessor);
+    final element = _elements[tag.value];
+    if (element == null) return null;
+    final value = element.value;
+    if (familyOf(element.vr) == family && value is T) return value;
+    throw _wrongType(element, T);
+  }
+
+  /// F36: a typed tag (its dictionary VRs agree on one Dart type) must be
+  /// read with `get` / `require` / `getAll`, which the compiler checks.
+  void _rejectTyped(Tag tag, String accessor) {
+    final entry = Dictionary.standard.entry(tag);
+    if (entry == null || entry.vrs.isEmpty) return;
+    if (entry.vrs.map(familyOf).toSet().length != 1) return;
+    final reader = entry.vm == '1' ? 'get' : 'getAll';
+    throw ArgumentError.value(
+        describeTag(tag),
+        'tag',
+        'has a typed constant; read it with ds.$reader(DicomTags.…), not '
+            '$accessor');
   }
 
   void _put(Tag tag, Object canonical) {

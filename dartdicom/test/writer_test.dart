@@ -183,4 +183,27 @@ void main() {
       }
     });
   });
+
+  group('Pixel Data never moves between compressed and native syntaxes', () {
+    test('a compressed dataset re-encoded as native is refused', () {
+      final rle = _fixture('pydicom/MR_small_RLE.dcm').dataset;
+      expect(
+          () => rle.toBytes(
+              transferSyntax: TransferSyntaxes.explicitVrLittleEndian),
+          throwsA(isA<DicomWriteException>()
+              .having((e) => e.message, 'message', contains('PixelData'))));
+      // Its own syntax still writes.
+      expect(rle.toBytes(transferSyntax: TransferSyntaxes.rleLossless),
+          isNotEmpty);
+    });
+
+    test('native pixels written under a compressed syntax are refused', () {
+      final ds = Dataset()
+        ..set(DicomTags.bitsAllocated, 8)
+        ..set(DicomTags.pixelData, Uint8List(4));
+      expect(
+          () => ds.toBytes(transferSyntax: TransferSyntaxes.jpegBaseline8Bit),
+          throwsA(isA<DicomWriteException>()));
+    });
+  });
 }

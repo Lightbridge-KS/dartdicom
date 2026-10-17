@@ -1,6 +1,7 @@
 // Per-VR decode and encode (data architecture §3.4). Runs on the VM and on
 // the web, where 64-bit values and int precision differ.
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
@@ -44,6 +45,21 @@ void main() {
         };
         expect(matches, isTrue, reason: '${vr.code} decoded to $value');
       });
+    }
+  });
+
+  test('familyOf agrees with the generator\'s contract (I-19)', () {
+    const names = {
+      ValueFamily.string: 'String',
+      ValueFamily.int: 'int',
+      ValueFamily.double: 'double',
+      ValueFamily.bigInt: 'BigInt',
+      ValueFamily.tag: 'Tag',
+      ValueFamily.bytes: 'Uint8List',
+      ValueFamily.sequence: 'Sequence',
+    };
+    for (final vr in Vr.values) {
+      expect(names[familyOf(vr)], dartTypeOf(vr), reason: vr.code);
     }
   });
 
@@ -92,6 +108,35 @@ void main() {
           () => _decodeText(Vr.DS, r'1.5\\2'),
           throwsA(isA<DicomParseException>()
               .having((e) => e.message, 'message', contains('(0011,1001)'))));
+    });
+
+    test('I-23: any finite double writes as DS in 16 characters', () {
+      final random = Random(23);
+      for (var i = 0; i < 5000; i++) {
+        final v = switch (i % 4) {
+          0 => (random.nextDouble() - 0.5) * pow(10, random.nextInt(600) - 300),
+          1 => random.nextInt(2147483647) * (random.nextBool() ? 1.0 : -1.0),
+          2 => random.nextDouble() * 1000,
+          _ => double.parse((random.nextDouble() * 100).toStringAsFixed(3)),
+        };
+        final text = latin1.decode(_encode(Vr.DS, [v])).trimRight();
+        expect(text.length, lessThanOrEqualTo(16), reason: '$v → $text');
+        final back = double.parse(text);
+        expect(back, closeTo(v, v.abs() * 1e-7 + 1e-300), reason: '$v → $text');
+      }
+    });
+
+    test('I-23: IS values within 32 bits write in 12 characters', () {
+      final random = Random(12);
+      for (var i = 0; i < 2000; i++) {
+        // Literals, not shifts: shifts are 32-bit on the web.
+        final v = random.nextInt(4294967295) - 2147483648;
+        final text = latin1.decode(_encode(Vr.IS, [v])).trimRight();
+        expect(text.length, lessThanOrEqualTo(12), reason: text);
+        expect(int.parse(text), v);
+      }
+      expect(
+          () => _encode(Vr.IS, [1 << 31]), throwsA(isA<DicomWriteException>()));
     });
 
     test('written DS values fit 16 characters', () {

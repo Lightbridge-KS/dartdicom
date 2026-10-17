@@ -37,3 +37,18 @@ bool isBytesVr(Vr vr) => switch (vr) {
       Vr.OB || Vr.OD || Vr.OF || Vr.OL || Vr.OV || Vr.OW || Vr.UN => true,
       _ => false,
     };
+
+/// The Dart type of one value of a VR (data architecture §3.4): the family
+/// the untyped getters and `setRaw` dispatch on.
+enum ValueFamily { string, int, double, bigInt, tag, bytes, sequence }
+
+/// The family of [vr]'s values.
+ValueFamily familyOf(Vr vr) => switch (vr) {
+      Vr.SQ => ValueFamily.sequence,
+      Vr.AT => ValueFamily.tag,
+      Vr.SV || Vr.UV => ValueFamily.bigInt,
+      Vr.DS || Vr.FL || Vr.FD => ValueFamily.double,
+      Vr.IS || Vr.US || Vr.SS || Vr.UL || Vr.SL => ValueFamily.int,
+      _ when isBytesVr(vr) => ValueFamily.bytes,
+      _ => ValueFamily.string,
+    };

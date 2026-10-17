@@ -7,7 +7,8 @@ import 'codec/text_codec.dart';
 import 'codec/vr_family.dart';
 import 'vr.dart';
 
-export 'codec/vr_family.dart' show isBytesVr, isCharsetVr, isTextVr;
+export 'codec/vr_family.dart'
+    show ValueFamily, familyOf, isBytesVr, isCharsetVr, isTextVr;
 
 // Per-VR conversion between value bytes and the Dart values of the data
 // architecture §3.4 contract. Each VR decodes to one canonical form:

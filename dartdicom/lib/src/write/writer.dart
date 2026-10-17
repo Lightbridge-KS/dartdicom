@@ -5,6 +5,7 @@ import '../dataset/dataset.dart';
 import '../dataset/element.dart';
 import '../dataset/sequence.dart';
 import '../errors.dart';
+import '../tag/tags.g.dart';
 import '../uid/transfer_syntax.dart';
 import '../vr/value_codec.dart';
 import '../vr/vr.dart';
@@ -27,9 +28,29 @@ Uint8List encodeDataset(Dataset ds, TransferSyntax ts,
     throw DicomWriteException(
         'transfer syntax ${ts.uid.value} is not supported for writing yet');
   }
+  _checkPixelEncapsulation(ds, ts);
   final out = BytesBuilder(copy: false);
   _Writer(ts).writeDataset(out, ds, inheritedCharset);
   return out.takeBytes();
+}
+
+/// Pixel Data can't move between an encapsulated (compressed) syntax and a
+/// native one without a codec: copying it across would write an invalid
+/// file. A dataset built in memory holds native pixels.
+void _checkPixelEncapsulation(Dataset ds, TransferSyntax ts) {
+  if (!ds.contains(DicomTags.pixelData)) return;
+  final source =
+      ds.transferSyntax == null ? null : TransferSyntax.of(ds.transferSyntax!);
+  final encapsulated = source?.encapsulated ?? false;
+  if (encapsulated == ts.encapsulated) return;
+  throw DicomWriteException(
+      encapsulated
+          ? 'the Pixel Data is compressed (${source!.uid.value}) and '
+              '${ts.uid.value} is native; decompressing needs a codec, which '
+              'is not supported yet, so write it in its own transfer syntax'
+          : 'the Pixel Data is native and ${ts.uid.value} is compressed; '
+              'compressing needs a codec, which is not supported yet',
+      tag: DicomTags.pixelData);
 }
 
 final class _Writer {

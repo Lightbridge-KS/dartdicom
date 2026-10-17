@@ -88,8 +88,8 @@ Planned 2026-10-17. Decisions:
 
 Each step ends with the dry and floor gates green, and `just live` after a read or write change.
 
-- [ ] **0. Docs.** The decisions above; blueprint F40 (`lib/src/source/`) and F41 (I-10 by rule); surface S9 and S10; the PRD's dciodvfy clause moved to M5.
-- [ ] **1. Dataset API, UIDs, the encapsulation bug.**
+- [x] **0. Docs** (`94d6759`). The decisions above; blueprint F40 (`lib/src/source/`) and F41 (I-10 by rule); surface S9 and S10; the PRD's dciodvfy clause moved to M5.
+- [x] **1. Dataset API, UIDs, the encapsulation bug.**
   - The untyped getters (F36), `ds.element(tag)`, `setRaw`, `privateBlock`, `Uid.generate` / `isValid`.
   - The writer refuses to change between encapsulated and native syntaxes while Pixel Data is present.
   - I-23's property test.
@@ -183,6 +183,7 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| dart2js's `Random.secure()` throws under Node (the SDK runtime calls the `crypto` getter with the wrong receiver), but works in Chrome and on the VM. `Uid.generate`'s tests skip Node; Node is not a target. | `uid_test.dart` on node and chrome, Node 26, 2026-10-17 |
 | Native frames decoded by `dartdicom_pixel` match pydicom 3.0.2's `pixel_array` (sha256, after `correct_unused_bits`) for all 15 native Little Endian fixtures with 8 or 16 bits allocated, multi-frame and interleaved RGB included. An aligned host-order frame is a zero-copy view. | `dartdicom_pixel/test/vs_pydicom_test.dart`, 2026-10-17 |
 | The M1 parser reads all 22 Little Endian fixtures, the 5 RLE (encapsulated) ones included, and agrees with pydicom 3.0.2 on every element of each (I-11 on the slice). Every one of them round-trips byte for byte, except pydicom's `rtdose.dcm` and `rtplan.dcm`: their file meta SOP Instance UID contradicts the dataset's, so the write is refused (I-17, data §5). | `vs_pydicom_test.dart`, `round_trip_test.dart`, 2026-10-17 |
 | pydicom's test files carry non-zero 128-byte preambles (a TIFF header), so `DicomFile` keeps the preamble it read | `round_trip_test.dart`, 2026-10-17 |
