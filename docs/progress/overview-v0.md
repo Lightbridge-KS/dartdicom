@@ -258,6 +258,7 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| DCMTK 3.6.7's `dcmqrscp` (Ubuntu 24.04's, the CI's) segfaults in single-process mode (`-s`) after its first association, with DCMTK's own `findscu` too; 3.7 doesn't. The interop peers run it forking, the default. | `interop.yml` run, reproduced in an `ubuntu:24.04` container, 2026-10-17 |
 | Under `fake_async`, a closed or cancelled stream (the DUL's transport, `StreamIterator.cancel`) never completes inside the fake zone, so a DUL abort or close never finishes there. Timer tests assert outcomes before the close; the requestor fuzz runs in real time with 50 ms timeouts instead. | `timeout_test.dart`, `fuzz_test.dart`, 2026-10-17 |
 | A command set that doesn't decode is the peer's protocol error, not a data error: the fuzz found a mutated one leaking `DicomParseException`, and one with no Command Field leaking `MissingElementException`. `DimseMessage.decodeCommand` decodes every value at once and throws `DimseProtocolException`. | `dartdicom_net/test/fuzz_test.dart`, 2026-10-17 |
 | Orthanc 1.13.0 performs a C-MOVE over a new association whose calling AE title is its own (`ORTHANC`), and stamps each C-STORE-RQ with the requestor as Move Originator. For a one-instance series it sends only the final C-MOVE-RSP, with no pending one. | `live_test.dart`, `retrieve_and_render --via=move`, 2026-10-17 |

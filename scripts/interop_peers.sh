@@ -68,7 +68,9 @@ DCMQRSCP $dir/dcmqrscp-db RW (200, 1024mb) ANY
 AETable END
 EOF
   "$dcmqridx" "$dir/dcmqrscp-db" "${seed[@]}"
-  "$dcmqrscp" -s -c "$dir/dcmqrscp.cfg" 14105 >"$dir/dcmqrscp.log" 2>&1 &
+  # Forking (the default), not -s: DCMTK 3.6's single-process mode
+  # segfaults after its first association (Ubuntu's 3.6.7, the CI's).
+  "$dcmqrscp" -c "$dir/dcmqrscp.cfg" 14105 >"$dir/dcmqrscp.log" 2>&1 &
   pids+=("$!")
   wait_port 14105 dcmqrscp
   export INTEROP_DCMQRSCP=14105
@@ -125,4 +127,15 @@ EOF
 fi
 
 cd "$caller"
-"$@"
+status=0
+"$@" || status=$?
+if [ "$status" -ne 0 ]; then
+  # The peers' own view of what went wrong, before their directory goes.
+  for log in "$dir"/*.log; do
+    [ -s "$log" ] || continue
+    echo "::group::interop: $(basename "$log") (last 80 lines)" >&2
+    tail -n 80 "$log" >&2
+    echo "::endgroup::" >&2
+  done
+fi
+exit "$status"
