@@ -3,13 +3,17 @@ import 'dart:typed_data';
 
 import '../dictionary/dictionary.dart';
 import '../errors.dart';
+import '../read/parser.dart';
+import '../read/read_options.dart';
 import '../tag/tag.dart';
 import '../tag/tags.g.dart';
 import '../tag/typed_tag.dart';
+import '../uid/transfer_syntax.dart';
 import '../uid/uid.dart';
 import '../vr/ambiguous.dart';
 import '../vr/value_codec.dart';
 import '../vr/vr.dart';
+import '../write/writer.dart';
 import 'element.dart';
 import 'sequence.dart';
 
@@ -28,6 +32,17 @@ final class Dataset {
   /// An empty dataset, to fill with [set] (e.g. a C-FIND query).
   Dataset() : transferSyntax = null;
 
+  /// Parses a bare dataset, with no preamble or file meta, encoded in
+  /// [transferSyntax]: e.g. a DIMSE identifier. For Part 10 bytes, use
+  /// `DicomFile.fromBytes`.
+  ///
+  /// Throws a [DicomParseException] with the offset and tag where reading
+  /// stopped if the bytes can't be read.
+  factory Dataset.fromBytes(Uint8List bytes,
+          {required Uid transferSyntax,
+          ReadOptions options = const ReadOptions()}) =>
+      parseDataset(bytes, _transferSyntax(transferSyntax), options);
+
   Dataset._read(Iterable<DataElement> elements, this.transferSyntax) {
     for (final e in elements) {
       _elements[e.tag.value] = e;
@@ -41,6 +56,15 @@ final class Dataset {
 
   final _elements = SplayTreeMap<int, DataElement>();
   var _modified = false;
+
+  /// Encodes this dataset alone, with no preamble or file meta, in
+  /// [transferSyntax]. Untouched elements are copied byte for byte when the
+  /// encoding is unchanged (I-10).
+  ///
+  /// Throws a [DicomWriteException] naming the tag if a value can't be
+  /// encoded.
+  Uint8List toBytes({required Uid transferSyntax}) =>
+      encodeDataset(this, _transferSyntax(transferSyntax));
 
   /// The number of elements at this level (not counting sequence items).
   int get length => _elements.length;
@@ -147,6 +171,11 @@ final class Dataset {
   @override
   String toString() => 'Dataset($length element${length == 1 ? '' : 's'})';
 }
+
+TransferSyntax _transferSyntax(Uid uid) =>
+    TransferSyntax.of(uid) ??
+    (throw ArgumentError.value(
+        uid.value, 'transferSyntax', 'is not a registered transfer syntax'));
 
 /// A dataset as the parser read it: not modified.
 Dataset readDataset(Iterable<DataElement> elements, Uid? transferSyntax) =>

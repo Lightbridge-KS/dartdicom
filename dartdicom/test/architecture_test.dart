@@ -39,11 +39,22 @@ void main() {
         isEmpty);
   });
 
-  test('I-5: dataset/ imports nothing from read/ or write/', () {
-    final dataset =
-        _libFiles.where((f) => f.path.startsWith('lib/src/dataset/'));
+  test('I-5: dataset/ imports nothing from read/ or write/ (but dataset.dart)',
+      () {
+    // dataset.dart alone may, for Dataset.fromBytes / toBytes (F38).
+    final dataset = _libFiles.where((f) =>
+        f.path.startsWith('lib/src/dataset/') &&
+        f.path != 'lib/src/dataset/dataset.dart');
     final banned = RegExp(r'''^\s*import\s+['"].*(?:/read/|/write/)''');
     expect(_offenders(dataset, banned), isEmpty);
+  });
+
+  test('I-5: read/ and write/ import nothing from file/', () {
+    final codecs = _libFiles.where((f) =>
+        f.path.startsWith('lib/src/read/') ||
+        f.path.startsWith('lib/src/write/'));
+    final banned = RegExp(r'''^\s*import\s+['"].*/file/''');
+    expect(_offenders(codecs, banned), isEmpty);
   });
 
   test('I-7: no top-level mutable variables in lib/', () {

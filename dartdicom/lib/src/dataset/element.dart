@@ -37,7 +37,15 @@ final class DataElement {
   ///
   /// Prefer the typed `Dataset` reads; this is for code that walks every
   /// element, such as a dump or a comparison.
-  Object get value => _value ??= decodeValue(tag, vr, _raw!.bytes,
+  ///
+  /// An undefined-length value (encapsulated Pixel Data) is its items,
+  /// without the closing Sequence Delimitation Item, as in pydicom.
+  Object get value => _value ??= decodeValue(
+      tag,
+      vr,
+      _raw!.undefinedLength
+          ? Uint8List.sublistView(_raw.bytes, 0, _raw.bytes.length - 8)
+          : _raw.bytes,
       littleEndian: _raw.littleEndian,
       specificCharacterSet: _raw.specificCharacterSet);
 
