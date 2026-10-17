@@ -1,6 +1,8 @@
-// Live gate: the real thing against a test PACS (docker/compose.yaml by
-// default). Skipped unless DARTDICOM_LIVE is set; `just live` sets it.
-// DARTDICOM_RECORD=1 also saves the peer's A-ASSOCIATE-AC as a test vector.
+// The interop matrix against Orthanc, the test PACS (docker/compose.yaml
+// by default): the five operations, plus what only a full PACS shows (its
+// idle timeout, a cancelled find, a move into our StorageScp). Skipped
+// unless DARTDICOM_LIVE is set; `just live` sets it. DARTDICOM_RECORD=1 also
+// saves the peer's A-ASSOCIATE-AC as a test vector.
 @TestOn('vm')
 @Tags(['live'])
 library;
@@ -12,21 +14,13 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_net/dartdicom_net.dart';
 import 'package:test/test.dart';
 
+import 'support.dart';
+
 final _env = Platform.environment;
 final _host = _env['ORTHANC_HOST'] ?? 'localhost';
 final _port = int.parse(_env['ORTHANC_DIMSE_PORT'] ?? '14242');
 final _aet = _env['ORTHANC_AET'] ?? 'ORTHANC';
-final _skip = _env.containsKey('DARTDICOM_LIVE')
-    ? null
-    : 'set DARTDICOM_LIVE=1 (just live) with a test PACS running';
-
-/// A skip reason when [tool] isn't installed (DCMTK, outside CI).
-String? _missing(String tool) {
-  final found = Process.runSync('which', [tool]).exitCode == 0;
-  if (found) return null;
-  if (_env.containsKey('CI')) throw StateError('$tool is required in CI');
-  return '$tool is not installed (DCMTK)';
-}
+final _skip = live;
 
 void main() {
   test('C-ECHO, then release', () async {
@@ -144,33 +138,6 @@ void main() {
       await scp.close();
     }
   }, skip: _skip);
-
-  test('DCMTK storescu stores into our StorageScp', () async {
-    final sink = MemorySink();
-    final scp = await StorageScp.start(
-        aeTitle: 'DARTDICOM',
-        sink: sink,
-        acceptFrom: const [ScpPeer('STORESCU')],
-        address: InternetAddress.loopbackIPv4);
-    addTearDown(scp.close);
-    for (final syntax in ['-xe', '-xi']) {
-      final result = await Process.run('storescu', [
-        syntax,
-        '-aet', 'STORESCU', '-aec', 'DARTDICOM', //
-        '127.0.0.1', '${scp.port}',
-        '../fixtures/data/synthetic/ct_signed_explicit_le.dcm',
-      ]);
-      expect(result.exitCode, 0, reason: '${result.stderr}');
-    }
-    expect(sink.instances, hasLength(2));
-    expect([
-      for (final i in sink.instances) i.transferSyntax
-    ], [
-      TransferSyntaxes.explicitVrLittleEndian,
-      TransferSyntaxes.implicitVrLittleEndian,
-    ]);
-    expect(sink.instances.first.sourceAeTitle, 'STORESCU');
-  }, skip: _skip ?? _missing('storescu'));
 
   test('C-FIND at STUDY, then SERIES level', () async {
     const ae = ApplicationEntity(

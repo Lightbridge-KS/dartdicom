@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # The live gate suite (blueprint §9): needs a running test PACS
-# (scripts/pacs_up.sh). Seeds it, runs the live tests, then the
-# retrieve_and_render example, and checks the image it wrote. Every step
+# (scripts/pacs_up.sh). Seeds it, runs the interop matrix (Orthanc, DCMTK,
+# pynetdicom), then the retrieve_and_render example both ways, and checks
+# the image it wrote. Every step
 # also has a deadline, a backstop behind the protocol's own timers (N-13).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,8 +19,12 @@ curl -sf "$http/system" >/dev/null || {
 echo "### seed"
 scripts/pacs_seed.sh
 
-echo "### live tests (dartdicom_net)"
-(cd dartdicom_net && DARTDICOM_LIVE=1 deadline 120 dart test test/live_test.dart)
+# The interop matrix: Orthanc, plus the DCMTK and pynetdicom peers that
+# scripts/interop_peers.sh starts. One file at a time: the C-MOVE tests all
+# take the StorageScp port.
+echo "### live tests (dartdicom_net): Orthanc, DCMTK, pynetdicom"
+(cd dartdicom_net && DARTDICOM_LIVE=1 deadline 300 ../scripts/interop_peers.sh \
+  dart test --concurrency=1 test/live/)
 
 # The example both ways: C-GET (the default), then C-MOVE into its own
 # StorageScp.

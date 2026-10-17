@@ -1,9 +1,12 @@
-# Live gates (blueprint §9): the test PACS in Docker, then the live tests
-# and the retrieve_and_render example against it. Manual for now; it goes
-# nightly once M3 adds C-MOVE and the full interop matrix.
+# Live gates (blueprint §9): the interop matrix (M3 decision 2). Orthanc in
+# Docker, DCMTK from apt, and pynetdicom from fixtures/'s uv environment
+# (scripts/interop_peers.sh) against dartdicom_net; then the
+# retrieve_and_render example by C-GET and by C-MOVE. Nightly and on demand.
 name: interop
 
 on:
+  schedule:
+    - cron: "41 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -11,16 +14,19 @@ permissions:
 
 jobs:
   live:
-    name: live gates (Orthanc)
+    name: live gates (Orthanc, DCMTK, pynetdicom)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: jdx/mise-action@v5.1.1 # installs the Dart from mise.toml
+      - uses: astral-sh/setup-uv@v10.2.0 # pynetdicom (fixtures/uv.lock)
+      - name: install DCMTK (dcmqrscp, storescp, storescu)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dcmtk
       - run: dart pub get
       - name: start the test PACS
         run: scripts/pacs_up.sh
-      - name: live gates (seed, live tests, retrieve_and_render)
+      - name: live gates (seed, the interop matrix, retrieve_and_render both ways)
         run: scripts/live_gates.sh
       - name: PACS logs
         if: failure()

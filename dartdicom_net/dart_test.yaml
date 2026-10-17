@@ -1,3 +1,4 @@
-# The live gate (test/live_test.dart) needs a test PACS; `just live` runs it.
+# The live gates (test/live/) need a test PACS and the interop peers;
+# `just live` runs them.
 tags:
   live:

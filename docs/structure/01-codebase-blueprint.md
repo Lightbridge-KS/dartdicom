@@ -337,7 +337,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 **Live gates** (`interop.yml`, nightly and manual, not on PRs):
 
 - a test PACS chosen by environment variables (§3): `docker/compose.yaml` by default, or any richer Orthanc-based PACS
-- DCMTK, plus pynetdicom from `uv`
+- DCMTK (`dcmqrscp`, `storescp`, `storescu`), plus pynetdicom's `qrscp`, `storescp` and `storescu` from `uv`, started and seeded by `scripts/interop_peers.sh`; the tests in `dartdicom_net/test/live/`, one file per peer *(amended, M3)*
 - the `examples/` programs, run end to end as executable docs (F34)
 - C-ECHO, C-FIND, C-GET, C-MOVE and C-STORE in both directions (PRD success criteria)
 

@@ -173,10 +173,20 @@ Each step ends with the dry and floor gates green, and `just live` after a netwo
   - **Sinks:** `ReceivedInstance.moveOriginatorAeTitle` / `moveOriginatorMessageId`; `DirectorySink` writes uniquely named `.part` files.
   - **Tests:** over real localhost sockets, including the same instance from two associations at once, `close()` mid-store, and 150 mutated association requests.
   - **Not done from the plan:** no `Association` object for the acceptor and no `calledAeTitle` → `peerAeTitle` rename. The serve loop takes the peer's AE title directly, so neither was needed.
-- [x] **8. C-MOVE SCU (N-09).** `sendCMove(query, destination:)` → `Stream<RetrieveProgress>`, with S5 and C-CANCEL like C-GET; the C-MOVE-RQ matches pynetdicom's vector.
+- [x] **8. C-MOVE SCU (N-09)** (`b9be00c`). `sendCMove(query, destination:)` → `Stream<RetrieveProgress>`, with S5 and C-CANCEL like C-GET; the C-MOVE-RQ matches pynetdicom's vector.
   - Live on the first run: Orthanc moved a series into our StorageScp, and `retrieve_and_render --via=move` renders it. `live_gates.sh` runs the example both ways.
   - Compose maps `host.docker.internal` to the host gateway for Linux CI.
-- [ ] **9. Interop matrix.** DCMTK (`dcmqrscp`, `storescp`, `storescu`) and pynetdicom (`qrscp`, `storescp`, `storescu`) peers via `scripts/interop_peers.sh`; `interop.yml` nightly.
+- [x] **9. Interop matrix.** The full matrix passed locally on its first run: 19 live tests, none skipped.
+  - `scripts/interop_peers.sh` configures, seeds and starts DCMTK `dcmqrscp` and `storescp`, and pynetdicom 3.0.4 `qrscp` and `storescp`, then runs the given command with their ports in `INTEROP_*`.
+  - **Tests:** one file per peer in `test/live/`, sharing the five operations in `support.dart`. A peer that isn't running skips with a reason, and is required in CI.
+  - **CI:** `interop.yml` runs nightly and on demand, with DCMTK from apt and uv.
+  - **The matrix:**
+
+    | | Orthanc | DCMTK | pynetdicom |
+    |---|---|---|---|
+    | C-ECHO | ✓ | → `storescp` ✓ | → `qrscp` ✓ |
+    | C-FIND / C-GET / C-MOVE | ✓ | → `dcmqrscp` ✓ | → `qrscp` ✓ |
+    | C-STORE | ✓ | → `storescp` ✓; `storescu` → ours ✓ | → `storescp` ✓; `storescu` → ours ✓ |
 - [ ] **10. Fuzz, net PHI canary, close.** PDU decoder, assembler and DUL fuzz; the canary over trace and exceptions; I-7's regex.
 
 **Exit:**
