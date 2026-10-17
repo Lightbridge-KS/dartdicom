@@ -42,8 +42,9 @@ Future<void> serveStorage(Dul dul, DimseChannel channel,
     } else if (field == CommandField.cStoreRq) {
       rsp = await storeInstance(rq, context, sink,
           mayStore: context?.scpRole ?? false, peerAeTitle: peerAeTitle);
-    } else if (field & 0x8000 == 0) {
-      rsp = responseCommand(field | 0x8000, rq.messageId ?? 0, 0x0211,
+    } else if (CommandField.isRequest(field)) {
+      rsp = responseCommand(
+          CommandField.responseOf(field), rq.messageId ?? 0, 0x0211,
           sopClassUid: rq.affectedSopClassUid);
     } else {
       await channel.protocolAbort('a response arrived where a request '

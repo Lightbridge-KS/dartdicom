@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dartdicom/dartdicom.dart';
 
 import '../errors.dart';
+import 'status.dart';
 
 /// Command Field (0000,0100) values (PS3.7 §E.1).
 abstract final class CommandField {
@@ -17,6 +18,12 @@ abstract final class CommandField {
   static const cEchoRq = 0x0030;
   static const cEchoRsp = 0x8030;
   static const cCancelRq = 0x0FFF;
+
+  /// Whether [field] is a request's: bit 15 clear.
+  static bool isRequest(int field) => field & 0x8000 == 0;
+
+  /// The Command Field of the response to request [field].
+  static int responseOf(int field) => field | 0x8000;
 }
 
 /// Command Data Set Type (0000,0800): no dataset follows.
@@ -50,6 +57,10 @@ final class DimseMessage {
   String? get affectedSopClassUid => command.get(DicomTags.affectedSopClassUid);
   String? get affectedSopInstanceUid =>
       command.get(DicomTags.affectedSopInstanceUid);
+
+  /// A response's outcome: its Status, or failure 0xC000 when it has none,
+  /// so a response missing its Status never reads as success (F12).
+  DimseStatus get outcome => DimseStatus(status ?? 0xC000);
 
   /// The command set in Implicit VR Little Endian, led by (0000,0000) with
   /// the length of the rest (PS3.7 §6.3.1).

@@ -18,12 +18,11 @@ import '../sink/instance_sink.dart';
 Future<Dataset> storeInstance(
     DimseMessage rq, AcceptedContext? context, InstanceSink sink,
     {required bool mayStore, required String peerAeTitle}) async {
+  if (context == null || !mayStore) return refusedStore(rq);
   final sopClass = rq.affectedSopClassUid;
   final sopInstance = rq.affectedSopInstanceUid;
   final int status;
-  if (context == null || !mayStore) {
-    status = 0x0122;
-  } else if (sopClass == null || sopInstance == null || rq.dataset == null) {
+  if (sopClass == null || sopInstance == null || rq.dataset == null) {
     status = 0xC211;
   } else {
     status = await _accept(
@@ -40,9 +39,16 @@ Future<Dataset> storeInstance(
               rq.command.get(DicomTags.moveOriginatorMessageId),
         ));
   }
-  return responseCommand(CommandField.cStoreRsp, rq.messageId ?? 0, status,
-      sopClassUid: sopClass, sopInstanceUid: sopInstance);
+  return _response(rq, status);
 }
+
+/// The C-STORE-RSP refusing [rq]: 0x0122, SOP class not supported.
+Dataset refusedStore(DimseMessage rq) => _response(rq, 0x0122);
+
+Dataset _response(DimseMessage rq, int status) =>
+    responseCommand(CommandField.cStoreRsp, rq.messageId ?? 0, status,
+        sopClassUid: rq.affectedSopClassUid,
+        sopInstanceUid: rq.affectedSopInstanceUid);
 
 Future<int> _accept(InstanceSink sink, ReceivedInstance instance) async {
   try {

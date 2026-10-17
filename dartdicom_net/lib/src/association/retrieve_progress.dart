@@ -15,7 +15,7 @@ final class RetrieveProgress {
   });
 
   factory RetrieveProgress.fromResponse(DimseMessage rsp) => RetrieveProgress(
-        status: DimseStatus(rsp.status ?? 0xC000),
+        status: rsp.outcome,
         remaining: rsp.command.get(DicomTags.numberOfRemainingSuboperations),
         completed:
             rsp.command.get(DicomTags.numberOfCompletedSuboperations) ?? 0,

@@ -60,7 +60,7 @@ final class Association {
             requestCommand(CommandField.cEchoRq, id, SopClasses.verification,
                 hasDataset: false)));
         final rsp = await _responseTo(id, CommandField.cEchoRsp);
-        return DimseStatus(rsp.status ?? 0xC000);
+        return rsp.outcome;
       });
 
   /// Sends [file]'s dataset with C-STORE-RQ and returns the response's
@@ -101,7 +101,7 @@ final class Association {
                 moveOriginatorMessageId: moveOriginatorMessageId),
             bytes));
         final rsp = await _responseTo(id, CommandField.cStoreRsp);
-        return DimseStatus(rsp.status ?? 0xC000);
+        return rsp.outcome;
       });
 
   AcceptedContext _storeContext(Uid sopClass, Uid? fileSyntax) {
@@ -147,26 +147,12 @@ final class Association {
   Stream<Dataset> sendCFind(Dataset query,
           {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) =>
       _operation('C-FIND', model.find, CommandField.cFindRq, query,
-          (message, id, context) async {
-        final rsp = await _expect(message, id, CommandField.cFindRsp);
-        return switch (DimseStatus(rsp.status ?? 0xC000)) {
-          DimsePending() => (
-              item: switch (rsp.dataset) {
-                final identifier? => Dataset.fromBytes(identifier,
+          emit: (rsp, status, context) => switch ((status, rsp.dataset)) {
+                (DimsePending(), final identifier?) => Dataset.fromBytes(
+                    identifier,
                     transferSyntax: context.transferSyntax),
-                null => null,
-              },
-              last: false,
-              failure: null,
-            ),
-          final DimseFailure failure => (
-              item: null,
-              last: true,
-              failure: failure
-            ),
-          _ => (item: null, last: true, failure: null),
-        };
-      });
+                _ => null,
+              });
 
   /// Sends C-GET-RQ with [query] and receives the instances it matches on
   /// this association, each handed to [sink] (PRD N-08, N-11).
@@ -185,26 +171,8 @@ final class Association {
   Stream<RetrieveProgress> sendCGet(Dataset query, InstanceSink sink,
           {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) =>
       _operation('C-GET', model.get, CommandField.cGetRq, query,
-          (message, id, context) async {
-        if (message.commandField == CommandField.cStoreRq) {
-          await _store(message, sink);
-          return (item: null, last: false, failure: null);
-        }
-        if (message.commandField != CommandField.cGetRsp ||
-            message.messageIdBeingRespondedTo != id) {
-          await _channel.protocolAbort('expected a C-GET response or a C-STORE '
-              'sub-operation, but got $message');
-        }
-        final progress = RetrieveProgress.fromResponse(message);
-        return (
-          item: progress,
-          last: progress.isFinal,
-          failure: switch (progress.status) {
-            final DimseFailure failure => failure,
-            _ => null,
-          },
-        );
-      });
+          emit: (rsp, _, __) => RetrieveProgress.fromResponse(rsp),
+          onStore: (rq) => _store(rq, sink));
 
   /// Sends C-MOVE-RQ with [query]: the peer stores the instances it matches
   /// on a new association of its own to the AE titled [destination] (PRD
@@ -224,44 +192,28 @@ final class Association {
           'must be the 1–16 character AE title of the move destination');
     }
     return _operation('C-MOVE', model.move, CommandField.cMoveRq, query,
-        (message, id, context) async {
-      if (message.commandField == CommandField.cStoreRq) {
+        emit: (rsp, _, __) => RetrieveProgress.fromResponse(rsp),
         // A store on this association during a move: not ours to take.
-        final rsp = await storeInstance(message, null, MemorySink(),
-            mayStore: false, peerAeTitle: calledAeTitle);
-        await _channel.send(DimseMessage(message.contextId, rsp));
-        return (item: null, last: false, failure: null);
-      }
-      if (message.commandField != CommandField.cMoveRsp ||
-          message.messageIdBeingRespondedTo != id) {
-        await _channel
-            .protocolAbort('expected a C-MOVE response, but got $message');
-      }
-      final progress = RetrieveProgress.fromResponse(message);
-      return (
-        item: progress,
-        last: progress.isFinal,
-        failure: switch (progress.status) {
-          final DimseFailure failure => failure,
-          _ => null,
-        },
-      );
-    },
+        onStore: (rq) =>
+            _channel.send(DimseMessage(rq.contextId, refusedStore(rq))),
         extend: (command) =>
             command.set(DicomTags.moveDestination, destination));
   }
 
   /// Runs one multi-response operation alone on the association: sends the
   /// [command] request with [query] on the context accepted for [sopClass],
-  /// then hands each message that arrives to [step] until one is the last.
+  /// then reads the responses to it up to the last, the first that isn't
+  /// Pending.
   ///
-  /// The stream emits each step's item. After the last, a failure is a
-  /// [DimseFailureException] stream error (surface S5). An error aborts the
+  /// The stream emits what [emit] makes of each response, if anything.
+  /// After the last, a failure is a [DimseFailureException] stream error
+  /// (surface S5). A C-STORE-RQ that arrives meanwhile goes to [onStore].
+  /// Any other message, a store without [onStore], or an error aborts the
   /// association.
   ///
   /// **Cancel** (F14): cancelling the subscription before the last response
   /// sends C-CANCEL-RQ at once, then reads on to the final response, still
-  /// running [step] (a C-GET keeps storing what is in flight) but emitting
+  /// answering stores (a C-GET keeps storing what is in flight) but emitting
   /// nothing. The drain is bounded by one DIMSE timeout from the cancel; past
   /// it, or on any error, the association is aborted and the cause recorded
   /// for the next call. `cancel()` itself always completes normally, once
@@ -269,15 +221,12 @@ final class Association {
   ///
   /// **Back-pressure:** while the subscription is paused, nothing more is
   /// read from the peer.
-  Stream<T> _operation<T>(
-      String name,
-      Uid sopClass,
-      int command,
-      Dataset query,
-      Future<_Step<T>> Function(
-              DimseMessage message, int id, AcceptedContext context)
-          step,
-      {void Function(Dataset command)? extend}) {
+  Stream<T> _operation<T>(String name, Uid sopClass, int command, Dataset query,
+      {required T? Function(
+              DimseMessage rsp, DimseStatus status, AcceptedContext context)
+          emit,
+      Future<void> Function(DimseMessage rq)? onStore,
+      void Function(Dataset command)? extend}) {
     late final StreamController<T> out;
     final done = Completer<void>();
     var started = false;
@@ -309,15 +258,24 @@ final class Association {
           while (out.isPaused && !cancelled) {
             await (resumed ??= Completer<void>()).future;
           }
-          final (:item, :last, :failure) =
-              await step(await _channel.receive(), id, context);
+          final message = await _channel.receive();
+          if (onStore != null &&
+              message.commandField == CommandField.cStoreRq) {
+            await onStore(message);
+            continue;
+          }
+          final rsp =
+              await _expect(message, id, CommandField.responseOf(command));
+          final status = rsp.outcome;
+          final item = emit(rsp, status, context);
+          final last = status is! DimsePending;
           // Marked before the last item is emitted, so cancelling on that
           // item cancels nothing.
           if (last) finished = true;
           if (!cancelled && item != null) out.add(item);
           if (!last) continue;
-          if (!cancelled && failure != null) {
-            out.addError(DimseFailureException(failure));
+          if (!cancelled && status is DimseFailure) {
+            out.addError(DimseFailureException(status));
           }
           break;
         }
@@ -429,8 +387,3 @@ final class Association {
   String toString() => 'Association($calledAeTitle, '
       '${acceptedContexts.length} accepted contexts)';
 }
-
-/// What one message of a multi-response operation produced: an item to
-/// emit (or none), whether it was the operation's last, and for the last
-/// a failure to end the stream with.
-typedef _Step<T> = ({T? item, bool last, DimseFailure? failure});

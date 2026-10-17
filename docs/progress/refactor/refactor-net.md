@@ -12,7 +12,7 @@ Parent: [overview](../overview-v0.md) · Design: [codebase blueprint](../../stru
 
 Behaviour-preserving moves in `dartdicom_net/lib/src` after M3. Cards #3 (`_operation` as a method object), #6 (`serveStorage` builds its own channel) and #7 (one AE-title check, a behaviour question) were not picked.
 
-- [ ] **#1 + #2.** `DimseMessage.outcome` holds the rule that a response without Status is failure 0xC000. `CommandField.responseOf` and `isRequest` replace the bit arithmetic. `_operation` checks each response against the request and applies the final-status rule once. find, get and move each pass an `emit` function (get and move also an `onStore`), and the `_Step` record goes. `refusedStore` replaces the throwaway `MemorySink` a C-MOVE used to refuse a store. One wording changes: an unexpected message during a get or move aborts with `_expect`'s message (no test asserts it, and it holds no values).
+- [x] **#1 + #2.** `DimseMessage.outcome` holds the rule that a response without Status is failure 0xC000. `CommandField.responseOf` and `isRequest` replace the bit arithmetic. `_operation` checks each response against the request and applies the final-status rule once. find, get and move each pass an `emit` function (get and move also an `onStore`), and the `_Step` record goes. `refusedStore` replaces the throwaway `MemorySink` a C-MOVE used to refuse a store. One wording changes: an unexpected message during a get or move aborts with `_expect`'s message (no test asserts it, and it holds no values).
 - [ ] **#4.** An internal extension in `trace/` records PDU events: the level check and the P-DATA hex rule (F5) move out of `dul.dart`, and `StorageScp` uses the same call.
 - [ ] **#5.** `dul/read_ahead.dart` holds the one-PDU hand-off between the reader and `receive` (F42). In place: the release-collision next state is computed once, `_startTimer` loses its always-ACSE parameter, `_transmit` and `_sendAbort` share one write, and the PS3.8 transition names move to `fsm/table.dart`.
 
@@ -22,6 +22,6 @@ Proof: the same net test names pass before and after (153 at 91ac8cf, `live` exc
 
 ## Evidence
 
-(filled as moves land)
+- **#1 + #2.** The same 153 net test names pass, plus one new one: a C-STORE-RQ on a C-MOVE's own association is refused with 0x0122. No test covered that path; the new test passes on the code before and after the move, and fails when the refusal is removed. Removing the final-Failure stream error fails the find, get and move tests. `just dry`, `just floor`, `just fuzz` (100,000 cases per group; the core's counts are unchanged, and net's four groups pass) and `just live` (19 tests against Orthanc, DCMTK and pynetdicom, plus `retrieve_and_render --via=get` and `--via=move`) all pass.
 
 On completion: set `status: complete`, then ask whether to prune this tracker.

@@ -138,6 +138,30 @@ void main() {
     await peerSide;
   });
 
+  test('a C-STORE-RQ on the move\'s own association is refused (0x0122)',
+      () async {
+    final (assoc, peer) = await _associate();
+    final peerSide = () async {
+      final rq = await peer.nextMessage();
+      await peer.sendMessage(DimseMessage(
+          rq.contextId,
+          storeCommand(7, SopClasses.ctImageStorage.value, '1.2.3.4.5'),
+          (Dataset()..set(DicomTags.sopInstanceUid, '1.2.3.4.5')).toBytes(
+              transferSyntax: TransferSyntaxes.implicitVrLittleEndian)));
+      final refused = await peer.nextMessage();
+      await peer.sendMessage(DimseMessage(rq.contextId, _rsp(rq, 0x0000)));
+      return refused;
+    }();
+    final events =
+        await assoc.sendCMove(_query, destination: 'DARTDICOM').toList();
+    final refused = await peerSide;
+    expect(refused.commandField, CommandField.cStoreRsp);
+    expect(refused.messageIdBeingRespondedTo, 7);
+    expect(refused.status, 0x0122);
+    expect(refused.affectedSopInstanceUid, '1.2.3.4.5');
+    expect(events.single.status, isA<DimseSuccess>());
+  });
+
   test('a destination that is no AE title is an ArgumentError', () async {
     final (assoc, _) = await _associate();
     expect(() => assoc.sendCMove(_query, destination: ''), throwsArgumentError);
