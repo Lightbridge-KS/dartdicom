@@ -61,9 +61,15 @@ hooks:
 
 # Start the Orthanc test PACS (DIMSE :14242, HTTP :18042 by default) and wait for it.
 pacs-up:
-    {{compose}} up -d
-    for i in $(seq 1 45); do curl -sf "http://localhost:{{http_port}}/system" >/dev/null && break; sleep 2; done
-    curl -s "http://localhost:{{http_port}}/system" | jq -c '{Name, DicomAet, Version}'
+    scripts/pacs_up.sh
+
+# Upload a fixed set of fixtures to the test PACS (idempotent).
+pacs-seed:
+    scripts/pacs_seed.sh
+
+# The live gates: seed, live tests, and the retrieve_and_render example. Needs pacs-up.
+live:
+    scripts/live_gates.sh
 
 # Stop and remove the test PACS (its data is not persisted).
 pacs-down:

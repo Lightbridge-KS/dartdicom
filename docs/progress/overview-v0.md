@@ -10,8 +10,8 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M1 Tracer bullet, planned 2026-10-17 in 8 steps (below). **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
-**Next:** M2–M4, filling out core, net and pixel, in any order.
+**Now:** M2–M4, filling out core, net and pixel, in any order. **M1 is done** (2026-10-17): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Next:** M5, 0.1.0 and the first consumer.
 
 ## Roadmap
 
@@ -62,11 +62,11 @@ Planned 2026-10-17. Each step ends with the dry gates green.
   - Tests: hand-checked PS3.8 vectors, a captured Orthanc A-ASSOCIATE-AC, and a live echo.
 - [x] **5. DIMSE and C-FIND** (`b9446f8`). Live STUDY and SERIES finds passed on the first run. Command sets, the fragmenter, the assembler (every PDV of every P-DATA-TF), and message IDs. `sendCFind` → `Stream<Dataset>` (S5).
   - Tests: a scripted peer, and a live find at STUDY and SERIES level.
-- [x] **6. C-GET and sinks.** `commonStorage` holds 36 classes. The live series get into a `DirectorySink` passed on its first run. `PresentationContexts.commonStorage` plus role items (≤ 128 contexts); `sendCGet` → `Stream<RetrieveProgress>`; `InstanceSink`, `ReceivedInstance`, `MemorySink`, `DirectorySink`.
+- [x] **6. C-GET and sinks** (`a436910`). `commonStorage` holds 36 classes. The live series get into a `DirectorySink` passed on its first run. `PresentationContexts.commonStorage` plus role items (≤ 128 contexts); `sendCGet` → `Stream<RetrieveProgress>`; `InstanceSink`, `ReceivedInstance`, `MemorySink`, `DirectorySink`.
   - Tests: I-20, I-21, and a live series get.
-- [ ] **7. Example and live gate.** `examples/bin/retrieve_and_render.dart` (Orthanc → C-FIND → C-GET → PGM); `scripts/pacs_seed.sh`, `scripts/live_gates.sh`, `just pacs-seed` / `just live`; `interop.yml` (`workflow_dispatch` only).
+- [x] **7. Example and live gate.** `examples/bin/retrieve_and_render.dart` (Orthanc → C-FIND → C-GET → PGM); `scripts/pacs_up.sh` (the `pacs-up` recipe body moved here), `scripts/pacs_seed.sh`, `scripts/live_gates.sh`, `just pacs-seed` / `just live`; `interop.yml` (`workflow_dispatch` only).
 
-**Exit:** the example retrieves a series from Orthanc and renders a frame. Every seam is crossed: bytes → `Dataset` → pixels, and PDVs → `Dataset` → sink.
+**Exit:** the example retrieves a series from Orthanc and renders a frame. Every seam is crossed: bytes → `Dataset` → pixels, and PDVs → `Dataset` → sink. **Met 2026-10-17** (`just live`).
 
 **M1 limits** (each is lifted later):
 
@@ -145,6 +145,8 @@ These run in order of demand:
 | Native frames decoded by `dartdicom_pixel` match pydicom 3.0.2's `pixel_array` (sha256, after `correct_unused_bits`) for all 15 native Little Endian fixtures with 8 or 16 bits allocated, multi-frame and interleaved RGB included. An aligned host-order frame is a zero-copy view. | `dartdicom_pixel/test/vs_pydicom_test.dart`, 2026-10-17 |
 | The M1 parser reads all 22 Little Endian fixtures, the 5 RLE (encapsulated) ones included, and agrees with pydicom 3.0.2 on every element of each (I-11 on the slice). Every one of them round-trips byte for byte, except pydicom's `rtdose.dcm` and `rtplan.dcm`: their file meta SOP Instance UID contradicts the dataset's, so the write is refused (I-17, data §5). | `vs_pydicom_test.dart`, `round_trip_test.dart`, 2026-10-17 |
 | pydicom's test files carry non-zero 128-byte preambles (a TIFF header), so `DicomFile` keeps the preamble it read | `round_trip_test.dart`, 2026-10-17 |
+| `examples/bin/retrieve_and_render.dart` retrieves CT_small's series from the compose Orthanc (C-ECHO, C-FIND STUDY and SERIES, C-GET 1/1) and renders a 128×128 frame that reads as an axial CT slice; `just live` checks the PGM | `scripts/live_gates.sh`, 2026-10-17 |
+| A DUL must cancel its PDU reader when it closes the transport: a paused subscription on a socket keeps the isolate, and so the program, alive after release. Only the live example caught it, because the test runner tears isolates down. | live run, 2026-10-17 |
 | dartdicom_net associates with Orthanc, C-ECHOes and releases; Orthanc's A-ASSOCIATE-AC is committed as `dartdicom_net/test/vectors/orthanc_associate_ac.bin` | `live_test.dart`, 2026-10-17 |
 | An `InMemoryTransport.close()` must not await `StreamController.close()`: that completes only once the peer reads the done event, which a paused `StreamIterator` never does | association tests hung, 2026-10-17 |
 | Orthanc 1.13.0 (image `orthancteam/orthanc:26.9.1`) as a C-GET SCP accepts a role item with SCU 0 and SCP 1 for each proposed storage class (`Accepted SCP/SCU Role: SCP`). It accepts the first proposed transfer syntax (Explicit VR LE), receives at most 16384-byte PDUs, and identifies itself as DCMTK 3.7.0 (`1.2.276.0.7230010.3.0.3.7.0`, `OFFIS_DCMTK_370`). `getscu` proposed 121 contexts, and all were accepted. | DCMTK `getscu -d`, 2026-10-17 |

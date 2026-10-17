@@ -88,17 +88,17 @@ final class Dul {
         case UlAction.ae3 || UlAction.dt2 || UlAction.ar6:
           return pdu;
         case UlAction.ae4 || UlAction.ar3:
-          await _transport.close();
+          await _close();
           return pdu;
         case UlAction.aa3:
-          await _transport.close();
+          await _close();
           final abort = pdu as Abort;
           throw AssociationAborted(abort.source == 2
               ? 'the peer\'s DICOM service aborted the association '
                   '(reason ${abort.reason})'
               : 'the peer aborted the association');
         case UlAction.aa2:
-          await _transport.close();
+          await _close();
           continue;
         case UlAction.aa6:
           continue;
@@ -139,7 +139,14 @@ final class Dul {
     } on Object {
       // The connection may already be gone; closing is all that is left.
     }
+    await _close();
+  }
+
+  /// Closes the transport and stops reading it, so no subscription keeps
+  /// the isolate alive.
+  Future<void> _close() async {
     await _transport.close();
+    await _pdus.cancel();
   }
 
   /// Applies a local request [event]; the table must define it.

@@ -22,7 +22,8 @@ The root `justfile` is the front door; `just --list` shows every recipe. Recipes
 - `just dry`: the dry gates (format, analyze, dependency rules, VM and web tests, the Wasm compile, publish dry-runs). Use `just dry chrome` for browser tests.
 - `just floor`: replays the CI floor job (Dart 3.6) on a temporary copy of the tree.
 - `just test` / `just test-web` / `just analyze` / `just fmt` / `just hooks`.
-- `just pacs-up` / `pacs-echo` / `pacs-down`: the Orthanc test PACS (DIMSE 14242, HTTP 18042).
+- `just pacs-up` / `pacs-seed` / `pacs-echo` / `pacs-down`: the Orthanc test PACS (DIMSE 14242, HTTP 18042).
+- `just live`: the live gates against that PACS (live tests and the `examples/` programs). CI runs them on demand (`interop.yml`).
 - `just fixtures` / `just fixtures-check`: regenerate or verify the test data (`fixtures/`, a uv project with a `fixtures` CLI).
 - Add a new workflow as a `scripts/` script plus a recipe, not as a long recipe body.
 

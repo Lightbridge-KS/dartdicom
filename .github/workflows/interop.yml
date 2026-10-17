@@ -1,0 +1,30 @@
+# Live gates (blueprint §9): the test PACS in Docker, then the live tests
+# and the retrieve_and_render example against it. Manual for now; it goes
+# nightly once M3 adds C-MOVE and the full interop matrix.
+name: interop
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: live gates (Orthanc)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.1.1 # installs the Dart from mise.toml
+      - run: dart pub get
+      - name: start the test PACS
+        run: scripts/pacs_up.sh
+      - name: live gates (seed, live tests, retrieve_and_render)
+        run: scripts/live_gates.sh
+      - name: PACS logs
+        if: failure()
+        run: docker compose -f docker/compose.yaml logs
+      - name: stop the test PACS
+        if: always()
+        run: docker compose -f docker/compose.yaml down
