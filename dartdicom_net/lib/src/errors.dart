@@ -1,6 +1,7 @@
 import 'package:dartdicom/dartdicom.dart';
 
 import 'dimse/status.dart';
+import 'timeouts.dart';
 
 /// Something went wrong on an association: it was rejected or aborted, the
 /// peer broke the protocol, or an operation's final status was a failure.
@@ -42,6 +43,26 @@ final class DimseProtocolException extends DimseException {
   DimseProtocolException(String problem)
       : super('DimseProtocolException: $problem; the association was aborted');
 }
+
+/// A timer of [Timeouts] expired: the association was aborted (or never
+/// established), and the next call fails the same way.
+final class DimseTimeout extends DimseException {
+  DimseTimeout(this.kind, this.after)
+      : super('DimseTimeout: ${kind.what} within the ${kind.setting} '
+            'timeout (${_duration(after)})'
+            '${kind == TimeoutKind.connect ? '' : ', so the association was aborted'}'
+            '; raise Timeouts.${kind.setting} if the peer is slow');
+
+  /// Which timer expired.
+  final TimeoutKind kind;
+
+  /// Its setting.
+  final Duration after;
+}
+
+String _duration(Duration d) => d.inMilliseconds % 1000 == 0
+    ? '${d.inSeconds} s'
+    : '${d.inMilliseconds} ms';
 
 /// A multi-response operation (C-FIND, C-GET, C-MOVE) ended with a failure
 /// status, or [DimseStatus.orThrow] was called on one (surface S5).

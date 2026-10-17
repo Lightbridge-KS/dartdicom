@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../timeouts.dart';
+import '../errors.dart';
 import 'transport.dart';
 
 /// A [Transport] over a TCP [Socket]: the only `dart:io` the association
@@ -11,10 +13,20 @@ final class SocketTransport implements Transport {
     _socket.setOption(SocketOption.tcpNoDelay, true);
   }
 
-  /// Connects to [host]:[port].
+  /// Connects to [host]:[port]. Throws a [DimseTimeout] after [timeout],
+  /// and a `SocketException` if the host refuses or can't be reached.
   static Future<SocketTransport> connect(String host, int port,
-          {Duration? timeout}) async =>
-      SocketTransport(await Socket.connect(host, port, timeout: timeout));
+      {Duration timeout = const Duration(seconds: 30)}) async {
+    final task = await Socket.startConnect(host, port);
+    final Socket socket;
+    try {
+      socket = await task.socket.timeout(timeout);
+    } on TimeoutException {
+      task.cancel();
+      throw DimseTimeout(TimeoutKind.connect, timeout);
+    }
+    return SocketTransport(socket);
+  }
 
   final Socket _socket;
   Future<void> _queue = Future.value();

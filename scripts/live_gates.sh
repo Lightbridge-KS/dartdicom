@@ -2,8 +2,7 @@
 # The live gate suite (blueprint §9): needs a running test PACS
 # (scripts/pacs_up.sh). Seeds it, runs the live tests, then the
 # retrieve_and_render example, and checks the image it wrote. Every step
-# has a deadline: there are no protocol timers yet (N-13), so a protocol
-# bug would otherwise hang.
+# also has a deadline, a backstop behind the protocol's own timers (N-13).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

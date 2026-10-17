@@ -30,7 +30,7 @@ final class Association {
   /// Requests an association over [transport] with [rq].
   static Future<Association> request(
       Transport transport, AssociateRq rq, ApplicationEntity ae) async {
-    final dul = Dul.requestor(transport);
+    final dul = Dul.requestor(transport, timeouts: ae.timeouts);
     final ac = await dul.requestAssociation(rq);
     return Association._(dul, rq.calledAeTitle, negotiatedContexts(rq, ac),
         ac.userInformation.maxLength);
@@ -167,7 +167,7 @@ final class Association {
         return;
       }
     } finally {
-      _busy = false;
+      _exit();
       if (!finished) await _dul.abort();
     }
   }
@@ -223,7 +223,7 @@ final class Association {
     try {
       return await operation();
     } finally {
-      _busy = false;
+      _exit();
     }
   }
 
@@ -233,6 +233,12 @@ final class Association {
           'association; await it (or cancel its stream) first');
     }
     _busy = true;
+    _dul.busy = true; // the network timer pauses while it runs
+  }
+
+  void _exit() {
+    _busy = false;
+    _dul.busy = false;
   }
 
   AcceptedContext _contextFor(Uid sopClass, String operation) =>

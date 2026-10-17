@@ -37,6 +37,18 @@ void main() {
     }
   }, skip: _skip);
 
+  test('an association left idle past the PACS\'s timeout ends clearly',
+      () async {
+    const ae = ApplicationEntity(
+        aeTitle: 'DARTDICOM',
+        requestedContexts: PresentationContexts.verification);
+    final assoc = await ae.associate(_host, _port, aeTitle: _aet);
+    // Orthanc's DicomScpTimeout (30 s) is shorter than our network timeout
+    // (60 s), so the PACS ends it first; the DUL notices while idle.
+    await Future<void>.delayed(const Duration(seconds: 35));
+    await expectLater(assoc.sendCEcho(), throwsA(isA<AssociationAborted>()));
+  }, skip: _skip, timeout: const Timeout(Duration(seconds: 60)));
+
   test('C-FIND at STUDY, then SERIES level', () async {
     const ae = ApplicationEntity(
         aeTitle: 'DARTDICOM',

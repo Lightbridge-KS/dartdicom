@@ -150,11 +150,11 @@ Each step ends with the dry and floor gates green, and `just live` after a netwo
 
 - [x] **0. Docs** (`9f4f10a`). The decisions above; blueprint F5, F14 amended, F42 (the DUL's reader model), F43 (StorageScp peers), `trace/` at rank 0, I-9/I-12/I-13 references; surface names for M3.
 - [x] **1. pynetdicom vectors (I-12)** (`de98d86`). `fixtures build` now also writes `fixtures/data/net/vectors.json` (26 vectors from pynetdicom 3.0.4) and `transition_table.json` (its 123 cells), checked by `fixtures check` (I-28). Every PDU type and every command set M3 uses matched on the first run: the M1 encoders were already pynetdicom's byte for byte. Added: the typed async window item (0x53), and one PDV per message part when the peer sets no PDU limit.
-- [x] **2. Reader model, full table, acceptor DUL (N-02, I-13, F42).** The 247-cell test matches pynetdicom's table, and the M1 cells it corrected are Sta13 + Evt19 → AA-7 and Sta13 + Evt6. The live gates passed unchanged on the new DUL.
+- [x] **2. Reader model, full table, acceptor DUL (N-02, I-13, F42)** (`3218f65`). The 247-cell test matches pynetdicom's table, and the M1 cells it corrected are Sta13 + Evt19 → AA-7 and Sta13 + Evt6. The live gates passed unchanged on the new DUL.
   - **Reader:** a one-PDU read-ahead reader; a peer's release while idle is answered (AR-2, AR-4); every later call throws the recorded cause, never a `StateError`.
   - **Acceptor:** request, accept, reject, release, and release collisions on both sides.
   - **Abort reasons:** an unexpected PDU aborts with reason 2 and an invalid one with reason 1, where pynetdicom always sends 0.
-- [ ] **3. Timeouts (N-13).** `Timeouts`; `DimseTimeout(TimeoutKind)`; timers inside the DUL and channel; `fake_async` tests.
+- [x] **3. Timeouts (N-13).** `Timeouts` (pynetdicom's defaults) on `ApplicationEntity`; `DimseTimeout(TimeoutKind)` in net's sealed tree; ACSE, ARTIM and network timers inside the DUL and the DIMSE timer in the channel; the connect timeout in `SocketTransport` (`Timeouts.connect` replaces `associate(connectTimeout:)`). Tested under `fake_async`; live, an association left idle past Orthanc's timeout ends with a clear `AssociationAborted`.
 - [ ] **4. C-CANCEL (N-07, F14).** Whole-message send queue; `_operation` on a `StreamController` with back-pressure; cancel then drain.
 - [ ] **5. Trace (N-14).** `Trace`, `TraceSink`, `TraceEvent` (DIMSE, PDU), levels; no values by default.
 - [ ] **6. C-STORE SCU (N-10).** `sendCStore(DicomFile)`; SCU+SCP roles for classes both requested and retrieved; `ApplicationEntity.deflateCodec`.
@@ -225,6 +225,7 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| Orthanc 1.13.0 ends an association left idle for its `DicomScpTimeout` (30 s by default) with an A-ABORT. Our network timeout (60 s) is longer, so against a stock Orthanc the PACS ends an idle association first; the DUL's pending read notices it while no operation runs (F42). | `live_test.dart`, 2026-10-17 |
 | DCMTK 3.7.0's `dcmdump` raises nothing on the 427 files dartdicom writes from the fixtures and the corpus, except a notice for private sequences in Implicit VR (CP-246, allowlisted). The one source warning, OW on encapsulated Pixel Data in `SC_rgb_rle_16bit.dcm`, is the source's: the as-read write copies it under I-10. | `scripts/written_gate.sh`, 2026-10-17 |
 | pydicom types private tags in Implicit VR from its private dictionary, sequences included: a defined-length private SQ written as Implicit VR reads as an SQ in pydicom and as UN without one (`OBXXXX1A_expb.dcm`, (200D,110D)). | `written_test.dart`, pydicom 3.0.2, 2026-10-17 |
 | pydicom 3.0.2 empties a dataset that ends inside an undefined-length value: `read_dataset` builds it in a dict comprehension, so the `EOFError` loses every element read before (`emri_small_jpeg_2k_lossless_too_short.dcm`). dartdicom keeps them and reports `valueDropped`; the comparator's only tolerance excuses exactly this. | pydicom `filereader.py`, 2026-10-17 |

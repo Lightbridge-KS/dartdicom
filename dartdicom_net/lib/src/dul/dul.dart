@@ -7,6 +7,7 @@ import '../fsm/table.dart';
 import '../pdu/pdus.dart';
 import '../transport/transport.dart';
 import 'framer.dart';
+import '../timeouts.dart';
 
 /// The DICOM Upper Layer service for one association (PS3.8 §9), in either
 /// role: PDUs in and out over a [Transport], every event checked against
@@ -19,23 +20,34 @@ import 'framer.dart';
 /// is taken, so a slow consumer slows the peer (one PDU of read-ahead).
 ///
 /// **The end is recorded.** Once the association ends, by an abort, a
-/// rejection, a closed connection, a protocol violation or a release by the
-/// peer, every later [send], [receive] and [release] throws why.
+/// rejection, a closed connection, a protocol violation, a timeout or a
+/// release by the peer, every later [send], [receive] and [release] throws
+/// why.
+///
+/// **Timers** ([Timeouts]): ACSE while waiting for A-ASSOCIATE-AC/RJ or
+/// A-RELEASE-RP; ARTIM (the ACSE value) in Sta2 and Sta13; network while
+/// established and not [busy]. Each runs inside the DUL, so its expiry
+/// fails the pending call with a [DimseTimeout].
 final class Dul {
   /// The DUL of the requestor, over a transport that just connected.
-  Dul.requestor(Transport transport)
-      : this._(transport, UlEvent.evt1, isRequestor: true);
+  Dul.requestor(Transport transport, {Timeouts timeouts = const Timeouts()})
+      : this._(transport, UlEvent.evt1, timeouts, isRequestor: true);
 
   /// The DUL of the acceptor, over a transport a listener just accepted.
-  Dul.acceptor(Transport transport)
-      : this._(transport, UlEvent.evt5, isRequestor: false);
+  Dul.acceptor(Transport transport, {Timeouts timeouts = const Timeouts()})
+      : this._(transport, UlEvent.evt5, timeouts, isRequestor: false);
 
-  Dul._(this._transport, UlEvent opening, {required this.isRequestor})
+  Dul._(this._transport, UlEvent opening, this.timeouts,
+      {required this.isRequestor})
       : _pdus =
             StreamIterator(_transport.incoming.transform(const PduFramer())) {
     _local(opening); // AE-1 or AE-5: the transport is already connected
+    if (!isRequestor) _startTimer(TimeoutKind.acse); // ARTIM, Sta2
     unawaited(_read());
   }
+
+  /// The timers' settings.
+  final Timeouts timeouts;
 
   /// Whether this side requested the association.
   final bool isRequestor;
@@ -54,6 +66,11 @@ final class Dul {
   var _releasedByPeer = false;
   var _closedLocally = false;
 
+  /// The ACSE or ARTIM timer, whichever is running.
+  Timer? _timer;
+  Timer? _idle;
+  var _busy = false;
+
   /// The current state of the state machine.
   UlState get state => _state;
 
@@ -64,11 +81,20 @@ final class Dul {
   /// after a release.
   DimseException? get cause => _cause;
 
+  /// Whether an operation runs (SCU) or a request is being served (SCP).
+  /// The network timer runs only while this is false.
+  bool get busy => _busy;
+  set busy(bool value) {
+    _busy = value;
+    _armIdle();
+  }
+
   /// Sends A-ASSOCIATE-RQ and waits for the answer: the A-ASSOCIATE-AC, or
   /// an [AssociationRejected] for an A-ASSOCIATE-RJ.
   Future<AssociateAc> requestAssociation(AssociateRq rq) async {
     _local(UlEvent.evt2); // AE-2
     await _transmit(rq);
+    _startTimer(TimeoutKind.acse);
     final answer = await receive();
     if (answer is AssociateAc) return answer;
     throw await _violation('expected A-ASSOCIATE-AC or -RJ, but got $answer');
@@ -82,9 +108,10 @@ final class Dul {
   }
 
   /// Accepts the association with [ac] (AE-7).
-  Future<void> accept(AssociateAc ac) {
+  Future<void> accept(AssociateAc ac) async {
     _local(UlEvent.evt7);
-    return _transmit(ac);
+    await _transmit(ac);
+    _armIdle();
   }
 
   /// Rejects the association with [rj] (AE-8); the requestor then closes
@@ -93,6 +120,7 @@ final class Dul {
     _local(UlEvent.evt8);
     _end(AssociationAborted('this side rejected the association'));
     await _transmit(rj);
+    _startTimer(TimeoutKind.acse); // ARTIM: the requestor closes
   }
 
   /// Sends one P-DATA-TF (DT-1).
@@ -136,15 +164,17 @@ final class Dul {
     }
     _local(UlEvent.evt11);
     await _transmit(const ReleaseRq());
+    _startTimer(TimeoutKind.acse);
     await _ended.future;
     if (_cause case final cause?) throw cause;
   }
 
   /// Aborts the association (A-ABORT, service user) and closes the
-  /// connection. Does nothing once the association has ended.
-  Future<void> abort() async {
+  /// connection; [because] is recorded as the cause. Does nothing once the
+  /// association has ended.
+  Future<void> abort({DimseException? because}) async {
     if (_ended.isCompleted) return;
-    _end(AssociationAborted('this side aborted the association'));
+    _end(because ?? AssociationAborted('this side aborted the association'));
     // Before an A-ASSOCIATE-RQ (Sta2) there is nothing to abort: closing the
     // connection is all (PS3.8 leaves Evt15 blank there).
     if (_state != UlState.sta2 && _local(UlEvent.evt15) == UlAction.aa1) {
@@ -208,6 +238,7 @@ final class Dul {
   Future<void> _received(UlEvent event, Pdu? pdu,
       {String? invalid, DimseException? because}) async {
     final from = _state;
+    _armIdle(); // anything received restarts the network timer
     final cell = transition(from, event);
     if (cell == null) {
       // A blank cell: the peer did something PS3.8 gives no meaning here.
@@ -219,7 +250,14 @@ final class Dul {
         ? (isRequestor ? UlState.sta9 : UlState.sta10)
         : nominal;
     switch (action) {
-      case UlAction.ae3 || UlAction.ae6 || UlAction.dt2:
+      case UlAction.ae3:
+        _stopTimer();
+        _deliver(pdu!);
+        _armIdle();
+      case UlAction.ae6:
+        _stopTimer(); // ARTIM
+        _deliver(pdu!);
+      case UlAction.dt2:
         _deliver(pdu!);
       case UlAction.ae4:
         final rj = pdu! as AssociateRj;
@@ -232,6 +270,7 @@ final class Dul {
         _end(null);
         _local(UlEvent.evt14);
         await _transmit(const ReleaseRp());
+        _startTimer(TimeoutKind.acse); // ARTIM: the requestor closes
       case UlAction.ar3:
         _end(null);
         await _closeLocally();
@@ -249,6 +288,7 @@ final class Dul {
         _end(null); // the release is confirmed; answer the peer's in turn
         _local(UlEvent.evt14); // AR-4 → Sta13
         await _transmit(const ReleaseRp());
+        _startTimer(TimeoutKind.acse); // ARTIM: the requestor closes
       case UlAction.aa1:
         // A PDU before the A-ASSOCIATE-RQ.
         _end(because ??
@@ -319,6 +359,40 @@ final class Dul {
     return _cause! as DimseProtocolException;
   }
 
+  // ── Timers ────────────────────────────────────────────────────────────────
+
+  void _startTimer(TimeoutKind kind) {
+    _timer?.cancel();
+    final after = timeouts.acse;
+    _timer = Timer(after, () => unawaited(_expired(kind, after)));
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  /// Restarts the network timer while established and idle; stops it
+  /// otherwise.
+  void _armIdle() {
+    _idle?.cancel();
+    _idle = null;
+    if (_busy || _state != UlState.sta6 || _ended.isCompleted) return;
+    final after = timeouts.network;
+    _idle = Timer(after, () => unawaited(_expired(TimeoutKind.network, after)));
+  }
+
+  /// A timer expired: ARTIM in Sta2 or Sta13 closes the connection (Evt18,
+  /// AA-2); any other aborts.
+  Future<void> _expired(TimeoutKind kind, Duration after) async {
+    if (_closedLocally) return;
+    if (_state == UlState.sta2 || _state == UlState.sta13) {
+      _end(DimseTimeout(kind, after));
+      return _closeLocally();
+    }
+    await abort(because: DimseTimeout(kind, after));
+  }
+
   // ── Plumbing ──────────────────────────────────────────────────────────────
 
   void _deliver(Pdu pdu) {
@@ -330,6 +404,8 @@ final class Dul {
   /// Records the end, once: [cause], or `null` for a release.
   void _end(DimseException? cause) {
     if (_ended.isCompleted) return;
+    _idle?.cancel();
+    if (_state != UlState.sta13) _stopTimer();
     _cause = cause;
     if (cause != null) _inbox.clear();
     _ended.complete();
@@ -386,6 +462,8 @@ final class Dul {
     if (_closedLocally) return;
     _closedLocally = true;
     _state = UlState.sta1;
+    _stopTimer();
+    _idle?.cancel();
     _end(_cause ?? AssociationAborted('the connection was closed'));
     try {
       await _transport.close();

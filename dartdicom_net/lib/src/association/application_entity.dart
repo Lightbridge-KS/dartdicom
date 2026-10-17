@@ -1,6 +1,7 @@
 import 'package:dartdicom/dartdicom.dart';
 
 import '../acse/negotiation.dart';
+import '../timeouts.dart';
 import '../pdu/pdus.dart';
 import '../transport/socket_transport.dart';
 import '../transport/transport.dart';
@@ -21,6 +22,7 @@ final class ApplicationEntity {
     this.requestedContexts = const [],
     this.retrieveStorageClasses = const [],
     this.maxPduLength = 16384,
+    this.timeouts = const Timeouts(),
   });
 
   /// This AE's title (the calling AE title): 1–16 characters.
@@ -36,16 +38,19 @@ final class ApplicationEntity {
   /// The largest P-DATA-TF this AE receives, in bytes (0 = no limit).
   final int maxPduLength;
 
+  /// How long each step may wait (PRD N-13); pynetdicom's defaults.
+  final Timeouts timeouts;
+
   /// Connects to [host]:[port] and associates with the AE titled [aeTitle].
   ///
-  /// Throws [AssociationRejected] if the peer rejects the association, and
-  /// a `SocketException` if it can't be reached.
+  /// Throws [AssociationRejected] if the peer rejects the association, a
+  /// [DimseTimeout] if it doesn't connect or answer in time ([timeouts]),
+  /// and a `SocketException` if it refuses or can't be reached.
   Future<Association> associate(String host, int port,
-      {required String aeTitle,
-      Duration connectTimeout = const Duration(seconds: 30)}) async {
+      {required String aeTitle}) async {
     final rq = associateRqFor(this, aeTitle);
     final transport =
-        await SocketTransport.connect(host, port, timeout: connectTimeout);
+        await SocketTransport.connect(host, port, timeout: timeouts.connect);
     return Association.request(transport, rq, this);
   }
 

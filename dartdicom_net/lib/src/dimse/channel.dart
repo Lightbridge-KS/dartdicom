@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:collection';
 
 import '../dul/dul.dart';
+import '../timeouts.dart';
 import '../errors.dart';
 import '../pdu/pdus.dart';
 import 'fragments.dart';
@@ -16,6 +18,10 @@ final class DimseChannel {
   DimseChannel(this._dul, this._peerMaxPduLength);
 
   final Dul _dul;
+
+  /// The DIMSE timeout: how long each wait for the peer's next PDU may
+  /// take while an operation runs.
+  Duration get _dimse => _dul.timeouts.dimse;
   final int _peerMaxPduLength;
   final _assembler = Assembler();
   final _received = Queue<DimseMessage>();
@@ -27,10 +33,23 @@ final class DimseChannel {
     }
   }
 
-  /// The next whole DIMSE message from the peer.
-  Future<DimseMessage> receive() async {
+  /// The next whole DIMSE message from the peer. Each wait for a PDU is
+  /// bounded by the DIMSE timeout, unless [timed] is false (an acceptor
+  /// waiting for its next request, which the network timer bounds).
+  Future<DimseMessage> receive({bool timed = true}) async {
     while (_received.isEmpty) {
-      final pdu = await _dul.receive();
+      final timer = timed
+          ? Timer(
+              _dimse,
+              () => unawaited(
+                  _dul.abort(because: DimseTimeout(TimeoutKind.dimse, _dimse))))
+          : null;
+      final Pdu? pdu;
+      try {
+        pdu = await _dul.receive();
+      } finally {
+        timer?.cancel();
+      }
       if (pdu == null) {
         throw AssociationAborted('the peer released the association');
       }
