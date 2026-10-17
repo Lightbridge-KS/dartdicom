@@ -10,7 +10,7 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M2–M4, filling out core, net and pixel, in any order. **M1 is done** (2026-10-17): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Now:** M2–M4, filling out core, net and pixel, in any order. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
 **Next:** M5, 0.1.0 and the first consumer.
 
 ## Roadmap
@@ -64,7 +64,7 @@ Planned 2026-10-17. Each step ends with the dry gates green.
   - Tests: a scripted peer, and a live find at STUDY and SERIES level.
 - [x] **6. C-GET and sinks** (`a436910`). `commonStorage` holds 36 classes. The live series get into a `DirectorySink` passed on its first run. `PresentationContexts.commonStorage` plus role items (≤ 128 contexts); `sendCGet` → `Stream<RetrieveProgress>`; `InstanceSink`, `ReceivedInstance`, `MemorySink`, `DirectorySink`.
   - Tests: I-20, I-21, and a live series get.
-- [x] **7. Example and live gate.** `examples/bin/retrieve_and_render.dart` (Orthanc → C-FIND → C-GET → PGM); `scripts/pacs_up.sh` (the `pacs-up` recipe body moved here), `scripts/pacs_seed.sh`, `scripts/live_gates.sh`, `just pacs-seed` / `just live`; `interop.yml` (`workflow_dispatch` only).
+- [x] **7. Example and live gate** (`165b8f6`). `examples/bin/retrieve_and_render.dart` (Orthanc → C-FIND → C-GET → PGM); `scripts/pacs_up.sh` (the `pacs-up` recipe body moved here), `scripts/pacs_seed.sh`, `scripts/live_gates.sh`, `just pacs-seed` / `just live`; `interop.yml` (`workflow_dispatch` only).
 
 **Exit:** the example retrieves a series from Orthanc and renders a frame. Every seam is crossed: bytes → `Dataset` → pixels, and PDVs → `Dataset` → sink. **Met 2026-10-17** (`just live`).
 
