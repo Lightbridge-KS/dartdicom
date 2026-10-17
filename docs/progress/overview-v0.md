@@ -179,6 +179,7 @@ These run in order of demand:
 ## Open questions
 
 - **Before 1.0:** does PN become `PersonName`, and do DA/TM/DT become date types (C-15)? Typed tags fix each VR's Dart type in every generated constant, so this is free only before 1.0 (data §8).
+- **Before 1.0:** should the wrong value type for a typed tag fail to compile (I-24)? `ds.set(DicomTags.rows, 'x')` compiles today, because Dart widens `T` to `Object`. `set` and `setAll` refuse it at runtime with an `ArgumentError`. A compile-time guard would change the public writing API, for example setters bound to the tag, so that `T` comes from the tag alone. `test/compile_fail/` pins the gap, so closing it means editing that file.
 - **M3:** which PACS products must the first consumer support, and do they support C-GET? The answer settles whether the default retrieve path is C-GET or C-MOVE. The tracer uses C-GET, which the test Orthanc supports (confirmed 2026-10-17).
 
 **Answered 2026-10-17, planning M2:** when a file is rewritten, its meta names dartdicom (0002,0012/0013) only if the file changed: an edit, a re-encode, or an edited meta. Otherwise the pair is kept as read, so I-10 holds. A missing or empty pair is filled, both tags together.

@@ -4,6 +4,7 @@ include: package:lints/recommended.yaml
 analyzer:
   exclude:
     - _playground/**   # local scratch, gitignored
+    - dartdicom/test/compile_fail/**   # code that must not compile (I-24): its own check analyzes it
   language:
     strict-casts: true
     strict-inference: true
