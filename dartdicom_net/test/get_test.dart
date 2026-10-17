@@ -128,6 +128,30 @@ void main() {
     expect(events.last.status, isA<DimseFailure>());
   });
 
+  test('cancelling on the final progress leaves the association open',
+      () async {
+    final (assoc, peer) = await _associate();
+    unawaited(_serve(peer, 1));
+    final last =
+        await assoc.sendCGet(_query, MemorySink()).firstWhere((p) => p.isFinal);
+    expect(last.status, isA<DimseSuccess>());
+    // An abort would reach the peer instead of the release request.
+    final released = peer.acceptRelease();
+    await assoc.release();
+    await released;
+  });
+
+  test('after a final Failure the association is free for the next operation',
+      () async {
+    final (assoc, peer) = await _associate();
+    unawaited(_serve(peer, 1, status: 0xA702));
+    await expectLater(assoc.sendCGet(_query, MemorySink()).drain<void>(),
+        throwsA(isA<DimseFailureException>()));
+    final released = peer.acceptRelease();
+    await assoc.release();
+    await released;
+  });
+
   test('a sink that throws fails that instance, and the retrieve goes on',
       () async {
     final (assoc, peer) = await _associate();

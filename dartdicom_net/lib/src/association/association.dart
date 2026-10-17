@@ -70,39 +70,28 @@ final class Association {
   /// Cancelling the subscription aborts the association in this version
   /// (C-CANCEL comes later).
   Stream<Dataset> sendCFind(Dataset query,
-      {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) async* {
-    final context = _contextFor(model.find, 'C-FIND');
-    _enter();
-    var finished = false;
-    try {
-      final id = _nextMessageId();
-      await _channel.send(DimseMessage(
-          context.id,
-          requestCommand(CommandField.cFindRq, id, model.find,
-              hasDataset: true, priority: mediumPriority),
-          query.toBytes(transferSyntax: context.transferSyntax)));
-      while (true) {
-        final rsp = await _responseTo(id, CommandField.cFindRsp);
-        switch (DimseStatus(rsp.status ?? 0xC000)) {
-          case DimsePending():
-            final identifier = rsp.dataset;
-            if (identifier != null) {
-              yield Dataset.fromBytes(identifier,
-                  transferSyntax: context.transferSyntax);
-            }
-          case final DimseFailure failure:
-            finished = true;
-            throw DimseFailureException(failure);
-          case _:
-            finished = true;
-            return;
-        }
-      }
-    } finally {
-      _busy = false;
-      if (!finished) await _dul.abort();
-    }
-  }
+          {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) =>
+      _operation('C-FIND', model.find, CommandField.cFindRq, query,
+          (message, id, context) async {
+        final rsp = await _expect(message, id, CommandField.cFindRsp);
+        return switch (DimseStatus(rsp.status ?? 0xC000)) {
+          DimsePending() => (
+              item: switch (rsp.dataset) {
+                final identifier? => Dataset.fromBytes(identifier,
+                    transferSyntax: context.transferSyntax),
+                null => null,
+              },
+              last: false,
+              failure: null,
+            ),
+          final DimseFailure failure => (
+              item: null,
+              last: true,
+              failure: failure
+            ),
+          _ => (item: null, last: true, failure: null),
+        };
+      });
 
   /// Sends C-GET-RQ with [query] and receives the instances it matches on
   /// this association, each handed to [sink] (PRD N-08, N-11).
@@ -118,22 +107,12 @@ final class Association {
   /// stream error (surface S5). Cancelling the subscription aborts the
   /// association in this version.
   Stream<RetrieveProgress> sendCGet(Dataset query, InstanceSink sink,
-      {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) async* {
-    final context = _contextFor(model.get, 'C-GET');
-    _enter();
-    var finished = false;
-    try {
-      final id = _nextMessageId();
-      await _channel.send(DimseMessage(
-          context.id,
-          requestCommand(CommandField.cGetRq, id, model.get,
-              hasDataset: true, priority: mediumPriority),
-          query.toBytes(transferSyntax: context.transferSyntax)));
-      while (true) {
-        final message = await _channel.receive();
+          {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) =>
+      _operation('C-GET', model.get, CommandField.cGetRq, query,
+          (message, id, context) async {
         if (message.commandField == CommandField.cStoreRq) {
           await _store(message, sink);
-          continue;
+          return (item: null, last: false, failure: null);
         }
         if (message.commandField != CommandField.cGetRsp ||
             message.messageIdBeingRespondedTo != id) {
@@ -141,15 +120,50 @@ final class Association {
               'sub-operation, but got $message');
         }
         final progress = RetrieveProgress.fromResponse(message);
-        if (!progress.isFinal) {
-          yield progress;
-          continue;
-        }
-        finished = true;
-        yield progress;
-        if (progress.status case final DimseFailure failure) {
-          throw DimseFailureException(failure);
-        }
+        return (
+          item: progress,
+          last: progress.isFinal,
+          failure: switch (progress.status) {
+            final DimseFailure failure => failure,
+            _ => null,
+          },
+        );
+      });
+
+  /// Runs one multi-response operation alone on the association: sends the
+  /// [command] request with [query] on the context accepted for [sopClass],
+  /// then hands each message that arrives to [step] until one is the last.
+  ///
+  /// The stream emits each step's item. After the last, a failure is a
+  /// [DimseFailureException] stream error (surface S5). Ending any other way
+  /// (a cancelled subscription, an error) aborts the association.
+  Stream<T> _operation<T>(
+      String name,
+      Uid sopClass,
+      int command,
+      Dataset query,
+      Future<_Step<T>> Function(
+              DimseMessage message, int id, AcceptedContext context)
+          step) async* {
+    final context = _contextFor(sopClass, name);
+    _enter();
+    var finished = false;
+    try {
+      final id = _nextMessageId();
+      await _channel.send(DimseMessage(
+          context.id,
+          requestCommand(command, id, sopClass,
+              hasDataset: true, priority: mediumPriority),
+          query.toBytes(transferSyntax: context.transferSyntax)));
+      while (true) {
+        final (:item, :last, :failure) =
+            await step(await _channel.receive(), id, context);
+        // Marked before the last item is yielded, so cancelling on that item
+        // doesn't abort an operation that is already complete.
+        if (last) finished = true;
+        if (item != null) yield item;
+        if (!last) continue;
+        if (failure != null) throw DimseFailureException(failure);
         return;
       }
     } finally {
@@ -231,8 +245,12 @@ final class Association {
       _lastMessageId = _lastMessageId == 0xFFFF ? 1 : _lastMessageId + 1;
 
   /// The next message, which must be a [field] response to request [id].
-  Future<DimseMessage> _responseTo(int id, int field) async {
-    final message = await _channel.receive();
+  Future<DimseMessage> _responseTo(int id, int field) async =>
+      _expect(await _channel.receive(), id, field);
+
+  /// [message], which must be a [field] response to request [id]: anything
+  /// else aborts the association.
+  Future<DimseMessage> _expect(DimseMessage message, int id, int field) async {
     if (message.commandField != field ||
         message.messageIdBeingRespondedTo != id) {
       await _channel
@@ -246,3 +264,8 @@ final class Association {
   String toString() => 'Association($calledAeTitle, '
       '${acceptedContexts.length} accepted contexts)';
 }
+
+/// What one message of a multi-response operation produced: an item to
+/// emit (or none), whether it was the operation's last, and for the last
+/// a failure to end the stream with.
+typedef _Step<T> = ({T? item, bool last, DimseFailure? failure});
