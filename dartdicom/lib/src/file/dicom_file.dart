@@ -5,6 +5,7 @@ import '../dictionary/dictionary.dart';
 import '../errors.dart';
 import '../read/parser.dart';
 import '../read/read_options.dart';
+import '../source/byte_source.dart';
 import '../tag/tags.g.dart';
 import '../tag/typed_tag.dart';
 import '../uid/implementation.dart';
@@ -35,10 +36,19 @@ final class DicomFile {
   /// Throws a [DicomParseException] with the offset and tag where reading
   /// stopped if the bytes can't be read.
   factory DicomFile.fromBytes(Uint8List bytes,
+          {ReadOptions options = const ReadOptions()}) =>
+      DicomFile.fromSource(BytesSource(bytes), options: options);
+
+  /// Parses Part 10 data from [source]: a file (`FileSource`), or any
+  /// random-access source. A source that holds only part of the data throws
+  /// `NeedMoreBytes` for an async driver to fetch more (design D1).
+  ///
+  /// Throws a [DicomParseException] with the offset and tag where reading
+  /// stopped if the data can't be read.
+  factory DicomFile.fromSource(ByteSource source,
       {ReadOptions options = const ReadOptions()}) {
-    final (:meta, :dataset) = parsePart10(bytes, options);
-    return DicomFile(FileMetaInformation(meta), dataset,
-        preamble: Uint8List.fromList(Uint8List.sublistView(bytes, 0, 128)));
+    final (:meta, :dataset, :preamble) = parsePart10(source, options);
+    return DicomFile(FileMetaInformation(meta), dataset, preamble: preamble);
   }
 
   /// The 128-byte preamble: zeros, or application data some files carry

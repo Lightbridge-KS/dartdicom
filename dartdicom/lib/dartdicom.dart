@@ -14,6 +14,8 @@ export 'src/errors.dart';
 export 'src/file/dicom_file.dart';
 export 'src/file/file_meta.dart';
 export 'src/read/read_options.dart';
+export 'src/source/byte_source.dart'
+    show ByteSource, BytesSource, NeedMoreBytes, SourceOpener;
 export 'src/tag/tag.dart';
 export 'src/tag/tags.g.dart';
 export 'src/tag/typed_tag.dart';

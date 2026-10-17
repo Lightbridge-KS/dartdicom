@@ -28,6 +28,11 @@ Uint8List encodeDataset(Dataset ds, TransferSyntax ts,
     throw DicomWriteException(
         'transfer syntax ${ts.uid.value} is not supported for writing yet');
   }
+  if (isPartial(ds)) {
+    throw DicomWriteException('the dataset was read only in part '
+        '(stopBeforePixels), so writing it would drop data; read it in full '
+        'to write it');
+  }
   _checkPixelEncapsulation(ds, ts);
   final out = BytesBuilder(copy: false);
   _Writer(ts).writeDataset(out, ds, inheritedCharset);
@@ -77,16 +82,24 @@ final class _Writer {
   void _writeElement(BytesBuilder out, DataElement element,
       List<String> charset, TransferSyntax? source) {
     final raw = rawValueOf(element);
+    if (element.vr == Vr.SQ) {
+      // A sequence keeps no bytes of its own: its items are written, each
+      // element copied or re-encoded on its own, in the length forms read.
+      final undefined = raw?.undefinedLength ?? false;
+      final items = _encodeItems(element.value as Sequence, charset);
+      _writeHeader(out, element, items.length, undefined: undefined);
+      out.add(items);
+      if (undefined) out.add(_delimiter(0xE0DD));
+      return;
+    }
     if (raw != null && _canCopy(element, raw, charset, source)) {
       _writeHeader(out, element, raw.bytes.length,
           undefined: raw.undefinedLength);
       out.add(raw.bytes);
       return;
     }
-    final value = element.vr == Vr.SQ
-        ? _encodeItems(element.value as Sequence, charset)
-        : encodeValue(element.tag, element.vr, element.value,
-            littleEndian: ts.littleEndian, specificCharacterSet: charset);
+    final value = encodeValue(element.tag, element.vr, element.value,
+        littleEndian: ts.littleEndian, specificCharacterSet: charset);
     _writeHeader(out, element, value.length);
     out.add(value);
   }
@@ -98,28 +111,40 @@ final class _Writer {
     final sameEndian = source != null && source.littleEndian == ts.littleEndian;
     final sameEncoding = sameEndian && source.explicitVr == ts.explicitVr;
     final vr = element.vr;
-    if (vr == Vr.SQ) {
-      // The bytes hold every item's element headers, so they need the same
-      // VR encoding too, and no item may have changed.
-      return sameEncoding && !_sequenceModified(element.value as Sequence);
-    }
     return sameEndian &&
         (!isCharsetVr(vr) || _sameTerms(raw.specificCharacterSet, charset)) &&
         (!raw.undefinedLength || sameEncoding);
   }
 
-  /// Encodes the items of [seq], each with a defined length.
+  /// Encodes the items of [seq], each in the length form it was read in: an
+  /// undefined-length item ends with an Item Delimitation Item. A new item
+  /// gets a defined length.
   Uint8List _encodeItems(Sequence seq, List<String> charset) {
     final body = BytesBuilder(copy: false);
     for (final item in seq) {
       final encoded = BytesBuilder(copy: false);
       writeDataset(encoded, item, charset);
-      body
-        ..add(_itemHeader(encoded.length))
-        ..add(encoded.takeBytes());
+      if (hasUndefinedLength(item)) {
+        body
+          ..add(_itemHeader(0xFFFFFFFF))
+          ..add(encoded.takeBytes())
+          ..add(_delimiter(0xE00D));
+      } else {
+        body
+          ..add(_itemHeader(encoded.length))
+          ..add(encoded.takeBytes());
+      }
     }
     return body.takeBytes();
   }
+
+  /// A delimitation item (FFFE,[element]) with length 0: E00D ends an item,
+  /// E0DD a sequence.
+  Uint8List _delimiter(int element) => (ByteData(8)
+        ..setUint16(0, 0xFFFE, endian)
+        ..setUint16(2, element, endian))
+      .buffer
+      .asUint8List();
 
   // An element header in each encoding (PS3.5 §7.1):
   //
@@ -162,15 +187,6 @@ final class _Writer {
       .buffer
       .asUint8List();
 }
-
-/// Whether [seq], or any sequence nested in it, has an item that changed
-/// since it was read.
-bool _sequenceModified(Sequence seq) => seq.any((item) =>
-    isModified(item) ||
-    item.elements.any((e) =>
-        e.vr == Vr.SQ &&
-        rawValueOf(e) != null &&
-        _sequenceModified(e.value as Sequence)));
 
 bool _sameTerms(List<String> a, List<String> b) {
   if (a.length != b.length) return false;

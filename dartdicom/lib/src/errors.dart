@@ -59,3 +59,13 @@ final class DicomWriteException extends DicomDataException {
   /// The element that could not be written, if the problem is in one.
   final Tag? tag;
 }
+
+/// A deferred value's source changed after it was read: its size or
+/// modification time differs (data architecture DA2). The loaded bytes might
+/// not be the ones that were parsed, so nothing is returned.
+final class SourceChangedException extends DicomDataException {
+  SourceChangedException()
+      : super('SourceChangedException: the file a deferred value was read '
+            'from changed since it was read (size or modification time); '
+            'read the file again');
+}

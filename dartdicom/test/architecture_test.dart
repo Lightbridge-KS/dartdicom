@@ -68,6 +68,20 @@ void main() {
     expect(_offenders(others, banned), isEmpty);
   });
 
+  test('F40: source/ is a leaf (only dart:typed_data and errors.dart)', () {
+    final source = _libFiles.where((f) => f.path.startsWith('lib/src/source/'));
+    final imports = RegExp(r'''^\s*import\s+['"]([^'"]+)['"]''');
+    final offenders = [
+      for (final f in source)
+        for (final line in f.readAsLinesSync())
+          if (imports.firstMatch(line)?.group(1) case final uri?
+              when uri != 'dart:typed_data' && !uri.endsWith('errors.dart'))
+            '${f.path}: $uri',
+    ];
+    expect(source, isNotEmpty);
+    expect(offenders, isEmpty);
+  });
+
   test('I-7: no top-level mutable variables in lib/', () {
     // Guard the guard: the pattern must flag mutable declarations and leave
     // constants, functions and types alone.

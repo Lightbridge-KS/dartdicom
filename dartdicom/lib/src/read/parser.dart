@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../dataset/dataset.dart';
@@ -6,6 +7,7 @@ import '../dataset/element.dart';
 import '../dataset/sequence.dart';
 import '../dictionary/dictionary.dart';
 import '../errors.dart';
+import '../source/byte_source.dart';
 import '../tag/tag.dart';
 import '../tag/tags.g.dart';
 import '../uid/transfer_syntax.dart';
@@ -14,10 +16,12 @@ import '../vr/ambiguous.dart';
 import '../vr/vr.dart';
 import 'read_options.dart';
 
-// A synchronous walk over bytes (design D1). It slices values without
-// decoding them; each element decodes itself on first access (C-05). SQ
-// items are parsed here, in place, so every element keeps its raw bytes and
-// nested offsets stay absolute.
+// A synchronous walk over a ByteSource (design D1). It slices values without
+// decoding them; each element decodes itself on first access (C-05). SQ items
+// are parsed here, into datasets of their own; a sequence keeps no bytes of
+// its own, and the writer rebuilds it from its items. A value longer than
+// ReadOptions.deferSize isn't read at all: it loads through the source's
+// opener on first access.
 
 const _item = 0xFFFEE000;
 const _itemDelimiter = 0xFFFEE00D;
@@ -28,23 +32,29 @@ const _bitsAllocated = 0x00280100;
 const _pixelRepresentation = 0x00280103;
 const _undefined = 0xFFFFFFFF;
 
+/// How deep sequences may nest before the data is taken as malformed: a
+/// bound that keeps a hostile file from overflowing the stack.
+const _maxDepth = 64;
+
 /// A Part 10 file split into its two parts: group 0002 and the dataset.
-typedef Part10 = ({Dataset meta, Dataset dataset});
+typedef Part10 = ({Dataset meta, Dataset dataset, Uint8List preamble});
 
 /// Parses a Part 10 file: the 128-byte preamble, `DICM`, the file meta
 /// group in Explicit VR Little Endian, then the dataset in the transfer
 /// syntax the meta declares (PS3.10 §7.1).
-Part10 parsePart10(Uint8List bytes, ReadOptions options) {
-  if (bytes.length < 132 ||
-      latin1.decode(Uint8List.sublistView(bytes, 128, 132)) != 'DICM') {
+Part10 parsePart10(ByteSource source, ReadOptions options) {
+  final head = source.length < 132 ? null : source.read(0, 132);
+  if (head == null ||
+      latin1.decode(Uint8List.sublistView(head, 128, 132)) != 'DICM') {
     throw DicomParseException(
         'no DICM prefix at byte 128, so this is not a Part 10 file',
         offset: 128);
   }
+  final preamble = Uint8List.fromList(Uint8List.sublistView(head, 0, 128));
   final metaParser =
-      _Parser(bytes, TransferSyntax.explicitVrLittleEndian, options);
-  final (metaElements, bodyStart) =
-      metaParser.readElements(132, bytes.length, _Scope.meta, _Context());
+      _Parser(source, TransferSyntax.explicitVrLittleEndian, options);
+  final (metaElements, bodyStart, _) =
+      metaParser.readElements(132, source.length, _Scope.meta, _Context());
   final meta =
       readDataset(metaElements, TransferSyntax.explicitVrLittleEndian.uid);
   final tsUid = meta.get(DicomTags.transferSyntaxUid);
@@ -54,17 +64,21 @@ Part10 parsePart10(Uint8List bytes, ReadOptions options) {
         offset: bodyStart);
   }
   final ts = _supported(Uid(tsUid), bodyStart);
-  return (meta: meta, dataset: parseDataset(bytes, ts, options, bodyStart));
+  return (
+    meta: meta,
+    dataset: parseDataset(source, ts, options, bodyStart),
+    preamble: preamble,
+  );
 }
 
 /// Parses a bare dataset (no preamble or file meta) encoded in [ts], from
 /// [start]: e.g. a DIMSE identifier.
-Dataset parseDataset(Uint8List bytes, TransferSyntax ts, ReadOptions options,
+Dataset parseDataset(ByteSource source, TransferSyntax ts, ReadOptions options,
     [int start = 0]) {
   _supported(ts.uid, start);
-  final (elements, _) = _Parser(bytes, ts, options)
-      .readElements(start, bytes.length, _Scope.dataset, _Context());
-  return readDataset(elements, ts.uid);
+  final (elements, _, partial) = _Parser(source, ts, options)
+      .readElements(start, source.length, _Scope.dataset, _Context());
+  return readDataset(elements, ts.uid, partial: partial);
 }
 
 TransferSyntax _supported(Uid uid, int offset) {
@@ -85,7 +99,7 @@ enum _Scope {
   meta,
 
   /// A whole dataset: stops at its end, or before Pixel Data when
-  /// [ReadOptions.stopBeforePixels] is set.
+  /// [ReadOptions.stopBeforePixels] is set. Only here are values deferred.
   dataset,
 
   /// A defined-length item: stops at its end.
@@ -105,28 +119,30 @@ final class _Context {
   _Context.inherit(_Context parent)
       : charset = parent.charset,
         bitsAllocated = parent.bitsAllocated,
-        pixelRepresentation = parent.pixelRepresentation;
+        pixelRepresentation = parent.pixelRepresentation,
+        depth = parent.depth + 1;
 
   List<String> charset;
   int? bitsAllocated;
   int? pixelRepresentation;
+
+  /// How many sequences enclose what is being read.
+  int depth = 0;
 }
 
 final class _Parser {
-  _Parser(this.bytes, this.ts, this.options)
-      : data = ByteData.sublistView(bytes),
-        endian = ts.littleEndian ? Endian.little : Endian.big;
+  _Parser(this.source, this.ts, this.options)
+      : endian = ts.littleEndian ? Endian.little : Endian.big;
 
-  final Uint8List bytes;
-  final ByteData data;
+  final ByteSource source;
   final TransferSyntax ts;
   final Endian endian;
   final ReadOptions options;
 
   /// Reads elements from [start] until [end], or until [scope] says to stop,
-  /// keeping [context] up to date. Returns them and the offset after the
-  /// last.
-  (List<DataElement>, int) readElements(
+  /// keeping [context] up to date. Returns them, the offset after the last,
+  /// and whether reading stopped early (a partial read).
+  (List<DataElement>, int, bool) readElements(
       int start, int end, _Scope scope, _Context context) {
     final elements = <DataElement>[];
     var at = start;
@@ -135,37 +151,29 @@ final class _Parser {
       final tag = _tagAt(at);
       if (scope == _Scope.meta && tag >> 16 != 0x0002) break;
       if (tag == _itemDelimiter) {
-        if (scope == _Scope.undefinedItem) return (elements, at + 8);
+        if (scope == _Scope.undefinedItem) return (elements, at + 8, false);
         throw DicomParseException('an Item Delimitation Item outside an item',
             offset: at);
       }
       if (scope == _Scope.dataset &&
           options.stopBeforePixels &&
           tag == _pixelData) {
-        break;
+        return (elements, at, true);
       }
 
       final (:vr, :length, :valueStart) = _readHeader(at, tag, context);
-      final (:valueEnd, :sequence) =
-          _readValue(valueStart, length, vr, context, tag);
-      final value = Uint8List.sublistView(bytes, valueStart, valueEnd);
-      final element = readElement(
-          Tag(tag),
-          vr,
-          RawValue(value,
-              undefinedLength: length == _undefined,
-              littleEndian: ts.littleEndian,
-              specificCharacterSet: context.charset),
-          decoded: sequence);
+      final (:valueEnd, :raw, :sequence) =
+          _readValue(valueStart, length, vr, context, tag, scope);
+      final element = readElement(Tag(tag), vr, raw, decoded: sequence);
       elements.add(element);
 
       switch (tag) {
         case _specificCharacterSet:
           context.charset = element.value as List<String>;
         case _bitsAllocated when length >= 2:
-          context.bitsAllocated = data.getUint16(valueStart, endian);
+          context.bitsAllocated = _u16Of(raw.bytes);
         case _pixelRepresentation when length >= 2:
-          context.pixelRepresentation = data.getUint16(valueStart, endian);
+          context.pixelRepresentation = _u16Of(raw.bytes);
       }
       at = valueEnd;
     }
@@ -174,7 +182,7 @@ final class _Parser {
           'an undefined-length item has no Item Delimitation Item',
           offset: at);
     }
-    return (elements, at);
+    return (elements, at, false);
   }
 
   /// Reads the header of the element at [at], whose tag is [tag]: its VR,
@@ -182,7 +190,7 @@ final class _Parser {
   ({Vr vr, int length, int valueStart}) _readHeader(
       int at, int tag, _Context context) {
     if (ts.explicitVr) {
-      final code = latin1.decode(Uint8List.sublistView(bytes, at + 4, at + 6));
+      final code = latin1.decode(source.read(at + 4, 2));
       final vr = Vr.fromCode(code);
       if (vr == null) {
         throw DicomParseException('unknown VR code in an explicit VR element',
@@ -202,31 +210,68 @@ final class _Parser {
     return (vr: vr, length: length, valueStart: at + 8);
   }
 
-  /// Finds where the value from [valueStart] ends. An SQ value's items are
-  /// parsed on the way and returned as [Sequence]; other values are only
-  /// sliced, and decode on first access.
-  ({int valueEnd, Sequence? sequence}) _readValue(
-      int valueStart, int length, Vr vr, _Context context, int tag) {
-    if (length == _undefined) {
-      if (vr == Vr.SQ) {
-        final (items, after) = _readItems(valueStart, null, context, tag);
-        return (valueEnd: after, sequence: Sequence(items));
-      }
-      return (valueEnd: _skipFragments(valueStart, tag), sequence: null);
-    }
-    _need(valueStart, length, tag);
-    final valueEnd = valueStart + length;
+  /// Reads the value from [valueStart]: where it ends, its [RawValue] (read,
+  /// or deferred), and for SQ the items, parsed into datasets.
+  ({int valueEnd, RawValue raw, Sequence? sequence}) _readValue(int valueStart,
+      int length, Vr vr, _Context context, int tag, _Scope scope) {
+    final undefined = length == _undefined;
     if (vr == Vr.SQ) {
-      final (items, _) = _readItems(valueStart, valueEnd, context, tag);
-      return (valueEnd: valueEnd, sequence: Sequence(items));
+      final (items, valueEnd) = undefined
+          ? _readItems(valueStart, null, context, tag)
+          : _readDefinedItems(valueStart, length, context, tag);
+      return (
+        valueEnd: valueEnd,
+        raw: RawValue.sequence(
+            undefinedLength: undefined,
+            littleEndian: ts.littleEndian,
+            specificCharacterSet: context.charset),
+        sequence: Sequence(items),
+      );
     }
-    return (valueEnd: valueEnd, sequence: null);
+    final valueEnd =
+        undefined ? _skipFragments(valueStart, tag) : valueStart + length;
+    if (!undefined) _need(valueStart, length, tag);
+    final count = valueEnd - valueStart;
+    final opener = source.opener;
+    final defer = options.deferSize;
+    final deferred = scope == _Scope.dataset &&
+        opener != null &&
+        defer != null &&
+        tag != _specificCharacterSet &&
+        (undefined ? count >= defer : count > defer);
+    return (
+      valueEnd: valueEnd,
+      raw: deferred
+          ? RawValue.deferred(opener, valueStart, count,
+              undefinedLength: undefined,
+              littleEndian: ts.littleEndian,
+              specificCharacterSet: context.charset)
+          : RawValue(source.read(valueStart, count),
+              undefinedLength: undefined,
+              littleEndian: ts.littleEndian,
+              specificCharacterSet: context.charset),
+      sequence: null,
+    );
+  }
+
+  (List<Dataset>, int) _readDefinedItems(
+      int start, int length, _Context context, int tag) {
+    _need(start, length, tag);
+    final (items, _) = _readItems(start, start + length, context, tag);
+    return (items, start + length);
   }
 
   /// Reads SQ items from [start] to [end], or to the Sequence Delimitation
   /// Item when [end] is null. Each item reads with a copy of [context].
   (List<Dataset>, int) _readItems(
       int start, int? end, _Context context, int sequenceTag) {
+    if (context.depth >= _maxDepth) {
+      throw DicomParseException(
+          'sequences nest more than $_maxDepth deep, so the data is taken as '
+          'malformed',
+          offset: start,
+          tag: Tag(sequenceTag));
+    }
     final items = <Dataset>[];
     var at = start;
     while (end == null || at < end) {
@@ -238,13 +283,13 @@ final class _Parser {
       }
       final itemContext = _Context.inherit(context);
       if (length == _undefined) {
-        final (elements, after) = readElements(
-            at + 8, bytes.length, _Scope.undefinedItem, itemContext);
-        items.add(readDataset(elements, ts.uid));
+        final (elements, after, _) = readElements(
+            at + 8, source.length, _Scope.undefinedItem, itemContext);
+        items.add(readDataset(elements, ts.uid, undefinedLength: true));
         at = after;
       } else {
         _need(at + 8, length, sequenceTag);
-        final (elements, _) =
+        final (elements, _, _) =
             readElements(at + 8, at + 8 + length, _Scope.item, itemContext);
         items.add(readDataset(elements, ts.uid));
         at += 8 + length;
@@ -289,14 +334,22 @@ final class _Parser {
         pixelRepresentation: context.pixelRepresentation);
   }
 
-  int _u16(int at) => data.getUint16(at, endian);
-  int _u32(int at) => data.getUint32(at, endian);
-  int _tagAt(int at) => _u16(at) << 16 | _u16(at + 2);
+  ByteData _data(int at, int n) => ByteData.sublistView(source.read(at, n));
+  int _u16(int at) => _data(at, 2).getUint16(0, endian);
+  int _u32(int at) => _data(at, 4).getUint32(0, endian);
+  int _u16Of(Uint8List bytes) =>
+      ByteData.sublistView(bytes).getUint16(0, endian);
+
+  int _tagAt(int at) {
+    final d = _data(at, 4);
+    return d.getUint16(0, endian) << 16 | d.getUint16(2, endian);
+  }
 
   void _need(int at, int n, int? tag) {
-    if (at + n > bytes.length) {
+    if (at + n > source.length) {
       throw DicomParseException('the data ends inside an element',
-          offset: at, tag: tag == null ? null : Tag(tag));
+          offset: math.min(at, source.length),
+          tag: tag == null ? null : Tag(tag));
     }
   }
 }

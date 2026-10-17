@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../dictionary/dictionary.dart';
+import '../source/byte_source.dart';
 import '../tag/tag.dart';
 import '../vr/value_codec.dart';
 import '../vr/vr.dart';
@@ -53,19 +54,58 @@ final class DataElement {
   String toString() => 'DataElement(${describeTag(tag)} ${vr.code})';
 }
 
-/// How an element was encoded where it was read: its value bytes, plus what
-/// is needed to decode them or to write them back unchanged.
+/// How an element was encoded where it was read: its value bytes (or how
+/// to load them), plus what is needed to decode them or to write them back
+/// unchanged.
 final class RawValue {
-  const RawValue(
-    this.bytes, {
+  /// A value whose [bytes] were read.
+  RawValue(
+    Uint8List bytes, {
     required this.undefinedLength,
     required this.littleEndian,
     required this.specificCharacterSet,
-  });
+  })  : _bytes = bytes,
+        _opener = null,
+        _offset = 0,
+        length = bytes.length;
 
-  /// The value bytes. For an undefined length, everything after the header
-  /// up to and including the Sequence Delimitation Item.
-  final Uint8List bytes;
+  /// A deferred value (C-09): [length] bytes at [offset], loaded through
+  /// [opener] on first access.
+  RawValue.deferred(
+    SourceOpener opener,
+    int offset,
+    this.length, {
+    required this.undefinedLength,
+    required this.littleEndian,
+    required this.specificCharacterSet,
+  })  : _opener = opener,
+        _offset = offset;
+
+  /// A sequence: its items hold the content, so only the length form is
+  /// kept, and the writer rebuilds the bytes from the items.
+  RawValue.sequence({
+    required this.undefinedLength,
+    required this.littleEndian,
+    required this.specificCharacterSet,
+  })  : _bytes = Uint8List(0),
+        _opener = null,
+        _offset = 0,
+        length = 0;
+
+  Uint8List? _bytes;
+  final SourceOpener? _opener;
+  final int _offset;
+
+  /// The value length in bytes. For an undefined length, everything after
+  /// the header up to and including the Sequence Delimitation Item.
+  final int length;
+
+  /// The value bytes, loaded through the source's opener on first access
+  /// if the value was deferred (and then kept).
+  Uint8List get bytes => _bytes ??= _opener!.read(_offset, length);
+
+  /// Whether the bytes haven't been loaded yet.
+  bool get isDeferred => _bytes == null;
 
   /// Whether the length field was `0xFFFFFFFF`.
   final bool undefinedLength;

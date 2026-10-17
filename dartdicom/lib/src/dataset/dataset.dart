@@ -5,6 +5,7 @@ import '../dictionary/dictionary.dart';
 import '../errors.dart';
 import '../read/parser.dart';
 import '../read/read_options.dart';
+import '../source/byte_source.dart';
 import '../tag/tag.dart';
 import '../tag/tags.g.dart';
 import '../tag/typed_tag.dart';
@@ -31,7 +32,10 @@ import 'sequence.dart';
 /// ```
 final class Dataset {
   /// An empty dataset, to fill with [set] (e.g. a C-FIND query).
-  Dataset() : transferSyntax = null;
+  Dataset()
+      : transferSyntax = null,
+        _partial = false,
+        _undefinedLength = false;
 
   /// Parses a bare dataset, with no preamble or file meta, encoded in
   /// [transferSyntax]: e.g. a DIMSE identifier. For Part 10 bytes, use
@@ -42,9 +46,13 @@ final class Dataset {
   factory Dataset.fromBytes(Uint8List bytes,
           {required Uid transferSyntax,
           ReadOptions options = const ReadOptions()}) =>
-      parseDataset(bytes, _transferSyntax(transferSyntax), options);
+      parseDataset(
+          BytesSource(bytes), _transferSyntax(transferSyntax), options);
 
-  Dataset._read(Iterable<DataElement> elements, this.transferSyntax) {
+  Dataset._read(Iterable<DataElement> elements, this.transferSyntax,
+      {bool partial = false, bool undefinedLength = false})
+      : _partial = partial,
+        _undefinedLength = undefinedLength {
     for (final e in elements) {
       _elements[e.tag.value] = e;
     }
@@ -56,6 +64,12 @@ final class Dataset {
   final Uid? transferSyntax;
 
   final _elements = SplayTreeMap<int, DataElement>();
+
+  /// Read only in part (`stopBeforePixels`, …): writing it would drop data.
+  final bool _partial;
+
+  /// An SQ item read with an undefined length, written back the same way.
+  final bool _undefinedLength;
   var _modified = false;
 
   /// Encodes this dataset alone, with no preamble or file meta, in
@@ -313,9 +327,19 @@ TransferSyntax _transferSyntax(Uid uid) =>
     (throw ArgumentError.value(
         uid.value, 'transferSyntax', 'is not a registered transfer syntax'));
 
-/// A dataset as the parser read it: not modified.
-Dataset readDataset(Iterable<DataElement> elements, Uid? transferSyntax) =>
-    Dataset._read(elements, transferSyntax);
+/// A dataset as the parser read it: not modified. [partial] marks a read
+/// that stopped early; [undefinedLength] an SQ item read with an undefined
+/// length.
+Dataset readDataset(Iterable<DataElement> elements, Uid? transferSyntax,
+        {bool partial = false, bool undefinedLength = false}) =>
+    Dataset._read(elements, transferSyntax,
+        partial: partial, undefinedLength: undefinedLength);
+
+/// Whether [ds] was read only in part, so writing it would drop data.
+bool isPartial(Dataset ds) => ds._partial;
+
+/// Whether [ds], an SQ item, was read with an undefined length.
+bool hasUndefinedLength(Dataset ds) => ds._undefinedLength;
 
 /// Whether [ds] itself (not its sequence items) changed since it was read
 /// or built.
