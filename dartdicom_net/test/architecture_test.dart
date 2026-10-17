@@ -37,6 +37,7 @@ void main() {
     const rank = {
       'pdu': 0,
       'fsm': 0,
+      'trace': 0,
       'transport': 0,
       'dul': 1,
       'dimse': 2,

@@ -155,11 +155,13 @@ Each step ends with the dry and floor gates green, and `just live` after a netwo
   - **Acceptor:** request, accept, reject, release, and release collisions on both sides.
   - **Abort reasons:** an unexpected PDU aborts with reason 2 and an invalid one with reason 1, where pynetdicom always sends 0.
 - [x] **3. Timeouts (N-13)** (`2e7e237`). `Timeouts` (pynetdicom's defaults) on `ApplicationEntity`; `DimseTimeout(TimeoutKind)` in net's sealed tree; ACSE, ARTIM and network timers inside the DUL and the DIMSE timer in the channel; the connect timeout in `SocketTransport` (`Timeouts.connect` replaces `associate(connectTimeout:)`). Tested under `fake_async`; live, an association left idle past Orthanc's timeout ends with a clear `AssociationAborted`.
-- [x] **4. C-CANCEL (N-07, F14).**
+- [x] **4. C-CANCEL (N-07, F14)** (`61d74f2`).
   - Cancelling a find or get subscription sends C-CANCEL-RQ at once (pynetdicom's three-element command set, checked against its vector). It then drains to the final response within one DIMSE timeout; a get keeps storing what is in flight.
   - `cancel()` always completes normally, and the association is free afterwards. Live, a find cancelled on its first Orthanc match leaves the association usable.
   - The channel sends whole messages in order. `_operation` runs on a `StreamController` that stops reading while its subscription is paused.
-- [ ] **5. Trace (N-14).** `Trace`, `TraceSink`, `TraceEvent` (DIMSE, PDU), levels; no values by default.
+- [x] **5. Trace (N-14).** `Trace(sink, level:, showValues:)` on `ApplicationEntity`; `TraceSink` (`TraceSink.lines` for a logger); a sealed `TraceEvent` of `DimseTrace` (the message by name, its command fields, its dataset by size) and `PduTrace` (a value-free summary, the transition such as `Sta6 + Evt10 → DT-2 → Sta6`, and hex for association, release and abort PDUs only).
+  - Instance UIDs and error comments are masked unless `showValues: true`, which also shows P-DATA hex.
+  - `trace/` sits at layer rank 0 in the architecture test. A sink that throws never disturbs the association.
 - [ ] **6. C-STORE SCU (N-10).** `sendCStore(DicomFile)`; SCU+SCP roles for classes both requested and retrieved; `ApplicationEntity.deflateCodec`.
 - [ ] **7. StorageScp (N-09, F3).** The listener, acceptor ACSE, the serve loop, the shared store handler; `peerAeTitle`; concurrency-safe `DirectorySink`; an acceptor fuzz.
 - [ ] **8. C-MOVE SCU (N-09).** `sendCMove`; compose `host-gateway`; `retrieve_and_render --via=move`.

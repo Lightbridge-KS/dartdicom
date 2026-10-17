@@ -8,6 +8,7 @@ import '../pdu/pdus.dart';
 import '../transport/transport.dart';
 import 'framer.dart';
 import '../timeouts.dart';
+import '../trace/trace.dart';
 
 /// The DICOM Upper Layer service for one association (PS3.8 §9), in either
 /// role: PDUs in and out over a [Transport], every event checked against
@@ -30,14 +31,16 @@ import '../timeouts.dart';
 /// fails the pending call with a [DimseTimeout].
 final class Dul {
   /// The DUL of the requestor, over a transport that just connected.
-  Dul.requestor(Transport transport, {Timeouts timeouts = const Timeouts()})
-      : this._(transport, UlEvent.evt1, timeouts, isRequestor: true);
+  Dul.requestor(Transport transport,
+      {Timeouts timeouts = const Timeouts(), Trace? trace})
+      : this._(transport, UlEvent.evt1, timeouts, trace, isRequestor: true);
 
   /// The DUL of the acceptor, over a transport a listener just accepted.
-  Dul.acceptor(Transport transport, {Timeouts timeouts = const Timeouts()})
-      : this._(transport, UlEvent.evt5, timeouts, isRequestor: false);
+  Dul.acceptor(Transport transport,
+      {Timeouts timeouts = const Timeouts(), Trace? trace})
+      : this._(transport, UlEvent.evt5, timeouts, trace, isRequestor: false);
 
-  Dul._(this._transport, UlEvent opening, this.timeouts,
+  Dul._(this._transport, UlEvent opening, this.timeouts, this.trace,
       {required this.isRequestor})
       : _pdus =
             StreamIterator(_transport.incoming.transform(const PduFramer())) {
@@ -48,6 +51,12 @@ final class Dul {
 
   /// The timers' settings.
   final Timeouts timeouts;
+
+  /// Where PDUs and transitions are traced, if anywhere (N-14).
+  final Trace? trace;
+
+  /// The last local transition, traced with the PDU it sends.
+  String? _localTransition;
 
   /// Whether this side requested the association.
   final bool isRequestor;
@@ -216,7 +225,7 @@ final class Dul {
           await _invalid(e.message);
           continue;
         }
-        await _received(_eventOf(pdu), pdu);
+        await _received(_eventOf(pdu), pdu, bytes: bytes);
       }
     } on Object catch (e) {
       _end(DimseProtocolException('the DUL failed (${e.runtimeType})'));
@@ -236,10 +245,28 @@ final class Dul {
 
   /// Performs the action for a received [event] ([pdu] for a PDU event).
   Future<void> _received(UlEvent event, Pdu? pdu,
-      {String? invalid, DimseException? because}) async {
+      {String? invalid, DimseException? because, Uint8List? bytes}) async {
     final from = _state;
     _armIdle(); // anything received restarts the network timer
     final cell = transition(from, event);
+    _trace(
+        outgoing: false,
+        summary: pdu == null
+            ? (invalid == null
+                ? 'the connection closed'
+                : 'an invalid PDU ($invalid)')
+            : '${pdu.summary} (${bytes?.length ?? 0} B)',
+        transition: cell == null
+            ? '${_name(from)} + ${_name(event)}: blank'
+            : _transitionText(
+                from,
+                event,
+                cell.$1,
+                cell.$1 == UlAction.ar8
+                    ? (isRequestor ? UlState.sta9 : UlState.sta10)
+                    : cell.$2),
+        pdu: pdu,
+        bytes: bytes);
     if (cell == null) {
       // A blank cell: the peer did something PS3.8 gives no meaning here.
       return _protocolAbort('unexpected ${pdu ?? event.name} in ${from.name}',
@@ -433,14 +460,23 @@ final class Dul {
       _throwIfEnded();
       throw StateError('${event.name} is not allowed in ${_state.name}');
     }
+    _localTransition = _transitionText(_state, event, cell.$1, cell.$2);
     _state = cell.$2;
     return cell.$1;
   }
 
   /// Sends [pdu]. A failed send means the connection is gone.
   Future<void> _transmit(Pdu pdu) async {
+    final bytes = pdu.encode();
+    _trace(
+        outgoing: true,
+        summary: '${pdu.summary} (${bytes.length} B)',
+        transition: _localTransition,
+        pdu: pdu,
+        bytes: bytes);
+    _localTransition = null;
     try {
-      await _transport.send(pdu.encode());
+      await _transport.send(bytes);
     } on Object {
       _end(AssociationAborted('the connection failed'));
       await _closeLocally();
@@ -449,8 +485,17 @@ final class Dul {
   }
 
   Future<void> _sendAbort({required int source, required int reason}) async {
+    final abort = Abort(source: source, reason: reason);
+    final bytes = abort.encode();
+    _trace(
+        outgoing: true,
+        summary: '${abort.summary} (${bytes.length} B)',
+        transition: _localTransition,
+        pdu: abort,
+        bytes: bytes);
+    _localTransition = null;
     try {
-      await _transport.send(Abort(source: source, reason: reason).encode());
+      await _transport.send(bytes);
     } on Object {
       // The connection may already be gone; closing is all that is left.
     }
@@ -472,6 +517,38 @@ final class Dul {
     }
     await _pdus.cancel();
   }
+
+  /// Records one PDU (or transport event) at [TraceLevel.pdu], with its
+  /// bytes at [TraceLevel.hex] unless they are P-DATA, which carries values
+  /// ([Trace.showValues] shows those too).
+  void _trace(
+      {required bool outgoing,
+      required String summary,
+      required String? transition,
+      required Pdu? pdu,
+      required Uint8List? bytes}) {
+    final trace = this.trace;
+    if (trace == null || !trace.includes(TraceLevel.pdu)) return;
+    final showBytes = trace.includes(TraceLevel.hex) &&
+        bytes != null &&
+        (pdu is! PDataTf || trace.showValues);
+    trace.record(PduTrace(
+        outgoing: outgoing,
+        summary: summary,
+        transition: transition,
+        bytes: showBytes ? bytes : null));
+  }
+
+  static String _transitionText(
+          UlState from, UlEvent event, UlAction action, UlState to) =>
+      '${_name(from)} + ${_name(event)} → ${_name(action)} → ${_name(to)}';
+
+  /// `sta6` → `Sta6`, `evt10` → `Evt10`, `dt2` → `DT-2`.
+  static String _name(Enum e) => switch (e) {
+        UlAction() =>
+          '${e.name.substring(0, 2).toUpperCase()}-${e.name.substring(2)}',
+        _ => '${e.name[0].toUpperCase()}${e.name.substring(1)}',
+      };
 
   static void _wake(Completer<void>? waiter) {
     if (waiter != null && !waiter.isCompleted) waiter.complete();

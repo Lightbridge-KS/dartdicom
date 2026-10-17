@@ -11,6 +11,11 @@ sealed class Pdu {
   /// The PDU type byte.
   int get type;
 
+  /// One line for the trace: the type and what it carries, never a value
+  /// (I-9). AE titles and UIDs of SOP classes and syntaxes are protocol
+  /// parameters, not patient data.
+  String get summary;
+
   /// The whole PDU: the 6-byte header and the body.
   Uint8List encode() {
     final body = PduWriter();
@@ -64,6 +69,13 @@ final class AssociateRq extends Pdu {
   final String applicationContext;
   final List<ProposedContext> contexts;
   final UserInformation userInformation;
+
+  @override
+  String get summary => 'A-ASSOCIATE-RQ $callingAeTitle → $calledAeTitle, '
+      '${contexts.length} context${contexts.length == 1 ? '' : 's'}, '
+      '${userInformation.roles.length} role item'
+      '${userInformation.roles.length == 1 ? '' : 's'}, '
+      'max PDU ${userInformation.maxLength}';
 
   @override
   int get type => 0x01;
@@ -124,6 +136,12 @@ final class AssociateAc extends Pdu {
   final UserInformation userInformation;
 
   @override
+  String get summary => 'A-ASSOCIATE-AC '
+      '${results.where((r) => r.accepted).length} of ${results.length} '
+      'context${results.length == 1 ? '' : 's'} accepted, '
+      'max PDU ${userInformation.maxLength}';
+
+  @override
   int get type => 0x02;
 
   @override
@@ -182,6 +200,10 @@ final class AssociateRj extends Pdu {
   final int reason;
 
   @override
+  String get summary =>
+      'A-ASSOCIATE-RJ result $result, source $source, reason $reason';
+
+  @override
   int get type => 0x03;
 
   @override
@@ -222,6 +244,13 @@ final class PDataTf extends Pdu {
   final List<Pdv> pdvs;
 
   @override
+  String get summary => 'P-DATA-TF ${[
+        for (final p in pdvs)
+          'ctx ${p.contextId} ${p.isCommand ? 'command' : 'dataset'}'
+              '${p.isLast ? ' last' : ''} ${p.data.length} B',
+      ].join(', ')}';
+
+  @override
   int get type => 0x04;
 
   @override
@@ -259,6 +288,9 @@ final class ReleaseRq extends Pdu {
   const ReleaseRq();
 
   @override
+  String get summary => 'A-RELEASE-RQ';
+
+  @override
   int get type => 0x05;
 
   @override
@@ -271,6 +303,9 @@ final class ReleaseRq extends Pdu {
 /// A-RELEASE-RP (type 0x06).
 final class ReleaseRp extends Pdu {
   const ReleaseRp();
+
+  @override
+  String get summary => 'A-RELEASE-RP';
 
   @override
   int get type => 0x06;
@@ -293,6 +328,9 @@ final class Abort extends Pdu {
   /// PDU, 2 unexpected PDU, 4 unrecognized parameter, 5 unexpected parameter,
   /// 6 invalid parameter value.
   final int reason;
+
+  @override
+  String get summary => 'A-ABORT source $source, reason $reason';
 
   @override
   int get type => 0x07;

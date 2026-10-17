@@ -3,6 +3,7 @@ import 'dart:collection';
 
 import '../dul/dul.dart';
 import '../timeouts.dart';
+import '../trace/trace.dart';
 import '../errors.dart';
 import '../pdu/pdus.dart';
 import 'fragments.dart';
@@ -31,6 +32,7 @@ final class DimseChannel {
   /// the order sent: a C-CANCEL-RQ never lands between another message's
   /// PDUs (PS3.8 §9.3.5).
   Future<void> send(DimseMessage message) {
+    _trace(message, outgoing: true);
     final sent = _sending.then((_) async {
       for (final pdu in fragment(message, _peerMaxPduLength)) {
         await _dul.send(pdu);
@@ -72,7 +74,20 @@ final class DimseChannel {
       }
       _received.addAll(messages);
     }
-    return _received.removeFirst();
+    final message = _received.removeFirst();
+    _trace(message, outgoing: false);
+    return message;
+  }
+
+  void _trace(DimseMessage message, {required bool outgoing}) {
+    final trace = _dul.trace;
+    if (trace == null) return;
+    trace.record(DimseTrace(
+        outgoing: outgoing,
+        contextId: message.contextId,
+        command: message.command,
+        datasetLength: message.dataset?.length,
+        showValues: trace.showValues));
   }
 
   /// Aborts the association, then throws a [DimseProtocolException] saying

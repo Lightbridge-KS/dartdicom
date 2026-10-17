@@ -2,6 +2,7 @@ import 'package:dartdicom/dartdicom.dart';
 
 import '../acse/negotiation.dart';
 import '../timeouts.dart';
+import '../trace/trace.dart';
 import '../pdu/pdus.dart';
 import '../transport/socket_transport.dart';
 import '../transport/transport.dart';
@@ -23,6 +24,7 @@ final class ApplicationEntity {
     this.retrieveStorageClasses = const [],
     this.maxPduLength = 16384,
     this.timeouts = const Timeouts(),
+    this.trace,
   });
 
   /// This AE's title (the calling AE title): 1–16 characters.
@@ -40,6 +42,10 @@ final class ApplicationEntity {
 
   /// How long each step may wait (PRD N-13); pynetdicom's defaults.
   final Timeouts timeouts;
+
+  /// Where the protocol is traced, if anywhere (PRD N-14). It shows no
+  /// element value unless [Trace.showValues] is set.
+  final Trace? trace;
 
   /// Connects to [host]:[port] and associates with the AE titled [aeTitle].
   ///

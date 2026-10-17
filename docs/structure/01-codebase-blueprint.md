@@ -260,7 +260,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Add a transfer syntax or refusal to the written-file gate | `dartdicom/tool/write_all.dart` (the matrix and the refusals it expects), `dartdicom/test/gates/written_test.dart` (the comparison), `dcmdumpAllowlist` in `dartdicom/test/gates/expected.dart` (DCMTK messages allowed, by version, each with its reason) *(amended)* |
 | Add a lenient-read repair | by what it repairs: file framing in `dartdicom/lib/src/read/parser.dart`; an element header (VR, explicit or implicit) in `read/parse/header.dart`; one that is only reported in `read/parse/checks.dart`; structure (truncation, trailing bytes) in `read/parse/walker.dart`. Plus its `RepairKind` in `dartdicom/lib/src/dataset/read_report.dart` and a case in `test/read/lenient_test.dart` *(amended)* |
 | Add an uncompressed transfer syntax | `dartdicom/lib/src/uid/transfer_syntax.dart`: a descriptor (explicit VR? endianness, deflated, encapsulated) that both the reader and the writer read |
-| Change PHI masking | `dartdicom/lib/src/redact/` |
+| Change PHI masking | `dartdicom/lib/src/redact/` (dump, C-21); the protocol trace's masking is `dartdicom_net/lib/src/trace/trace.dart` (F5) *(amended)* |
 | Add a PDU sub-item (e.g. user identity) | `dartdicom_net/lib/src/pdu/items.dart` |
 | Fix a state-machine transition | `dartdicom_net/lib/src/fsm/table.dart` |
 | Add a DIMSE service | `dartdicom_net/lib/src/dimse/messages.dart` plus an `Association` method |

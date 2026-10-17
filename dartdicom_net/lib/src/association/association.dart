@@ -31,7 +31,8 @@ final class Association {
   /// Requests an association over [transport] with [rq].
   static Future<Association> request(
       Transport transport, AssociateRq rq, ApplicationEntity ae) async {
-    final dul = Dul.requestor(transport, timeouts: ae.timeouts);
+    final dul =
+        Dul.requestor(transport, timeouts: ae.timeouts, trace: ae.trace);
     final ac = await dul.requestAssociation(rq);
     return Association._(dul, rq.calledAeTitle, negotiatedContexts(rq, ac),
         ac.userInformation.maxLength);

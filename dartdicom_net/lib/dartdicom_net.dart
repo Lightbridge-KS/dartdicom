@@ -17,6 +17,7 @@ export 'src/association/presentation_contexts.dart';
 export 'src/association/retrieve_progress.dart';
 export 'src/dimse/status.dart';
 export 'src/timeouts.dart';
+export 'src/trace/trace.dart';
 export 'src/errors.dart';
 export 'src/sink/directory_sink.dart';
 export 'src/sink/instance_sink.dart';
