@@ -149,8 +149,11 @@ Planned 2026-10-17. Decisions:
 Each step ends with the dry and floor gates green, and `just live` after a network change.
 
 - [x] **0. Docs** (`9f4f10a`). The decisions above; blueprint F5, F14 amended, F42 (the DUL's reader model), F43 (StorageScp peers), `trace/` at rank 0, I-9/I-12/I-13 references; surface names for M3.
-- [x] **1. pynetdicom vectors (I-12).** `fixtures build` now also writes `fixtures/data/net/vectors.json` (26 vectors from pynetdicom 3.0.4) and `transition_table.json` (its 123 cells), checked by `fixtures check` (I-28). Every PDU type and every command set M3 uses matched on the first run: the M1 encoders were already pynetdicom's byte for byte. Added: the typed async window item (0x53), and one PDV per message part when the peer sets no PDU limit.
-- [ ] **2. Reader model, full table, acceptor DUL (N-02, I-13, F42).** One-PDU read-ahead; a recorded terminal cause; all 123 PS3.8 cells (Sta13 + Evt19 → AA-7, Sta13 + Evt6 added); the acceptor half and release collisions.
+- [x] **1. pynetdicom vectors (I-12)** (`de98d86`). `fixtures build` now also writes `fixtures/data/net/vectors.json` (26 vectors from pynetdicom 3.0.4) and `transition_table.json` (its 123 cells), checked by `fixtures check` (I-28). Every PDU type and every command set M3 uses matched on the first run: the M1 encoders were already pynetdicom's byte for byte. Added: the typed async window item (0x53), and one PDV per message part when the peer sets no PDU limit.
+- [x] **2. Reader model, full table, acceptor DUL (N-02, I-13, F42).** The 247-cell test matches pynetdicom's table, and the M1 cells it corrected are Sta13 + Evt19 → AA-7 and Sta13 + Evt6. The live gates passed unchanged on the new DUL.
+  - **Reader:** a one-PDU read-ahead reader; a peer's release while idle is answered (AR-2, AR-4); every later call throws the recorded cause, never a `StateError`.
+  - **Acceptor:** request, accept, reject, release, and release collisions on both sides.
+  - **Abort reasons:** an unexpected PDU aborts with reason 2 and an invalid one with reason 1, where pynetdicom always sends 0.
 - [ ] **3. Timeouts (N-13).** `Timeouts`; `DimseTimeout(TimeoutKind)`; timers inside the DUL and channel; `fake_async` tests.
 - [ ] **4. C-CANCEL (N-07, F14).** Whole-message send queue; `_operation` on a `StreamController` with back-pressure; cancel then drain.
 - [ ] **5. Trace (N-14).** `Trace`, `TraceSink`, `TraceEvent` (DIMSE, PDU), levels; no values by default.

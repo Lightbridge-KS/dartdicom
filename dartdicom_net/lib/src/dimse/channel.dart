@@ -31,6 +31,9 @@ final class DimseChannel {
   Future<DimseMessage> receive() async {
     while (_received.isEmpty) {
       final pdu = await _dul.receive();
+      if (pdu == null) {
+        throw AssociationAborted('the peer released the association');
+      }
       if (pdu is! PDataTf) {
         await protocolAbort('unexpected $pdu during an operation');
       }
