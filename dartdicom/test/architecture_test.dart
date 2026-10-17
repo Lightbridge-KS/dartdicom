@@ -68,6 +68,17 @@ void main() {
     expect(_offenders(others, banned), isEmpty);
   });
 
+  test('I-31: only read/parser.dart imports read/parse/', () {
+    final banned =
+        RegExp(r'''^\s*(?:import|export)\s+['"](?:parse/|.*/read/parse/)''');
+    bool isBarrel(File f) => f.path == 'lib/src/read/parser.dart';
+    // Guard the guard: the barrel's own imports match the pattern.
+    expect(_offenders(_libFiles.where(isBarrel), banned), isNotEmpty);
+    final others = _libFiles.where(
+        (f) => !isBarrel(f) && !f.path.startsWith('lib/src/read/parse/'));
+    expect(_offenders(others, banned), isEmpty);
+  });
+
   test('F40: source/ is a leaf (only dart:typed_data and errors.dart)', () {
     final source = _libFiles.where((f) => f.path.startsWith('lib/src/source/'));
     final imports = RegExp(r'''^\s*import\s+['"]([^'"]+)['"]''');

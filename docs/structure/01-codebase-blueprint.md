@@ -131,7 +131,7 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 │   ├── lib/src/dataset/          Dataset (+ its fromBytes/toBytes entry points, F38), DataElement, Sequence, ReadReport (F28)
 │   ├── lib/src/file/             DicomFile, FileMetaInformation, file meta derivation (F38) *(amended)*
 │   ├── lib/src/source/           ByteSource, BytesSource, PrefixSource, SourceOpener, NeedMoreBytes: a leaf (F40) *(amended)*
-│   ├── lib/src/read/             Parser, ReadOptions, repairs, inflate
+│   ├── lib/src/read/             parser.dart, the barrel over parse/ (walker · header · checks · ambiguity · level · source_reader; I-31); ReadOptions, inflate *(amended)*
 │   ├── lib/src/write/            Writer, WriteOptions
 │   ├── lib/src/redact/           Redactor; dump
 │   ├── lib/src/io/               FileSource, ZLibDeflateCodec: the only dart:io in this package
@@ -256,7 +256,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Change the folder layout or naming of stored files | `dartdicom_net/lib/src/sink/` |
 | Add a character set | `dartdicom/lib/src/charset/` |
 | Add a transfer syntax or refusal to the written-file gate | `dartdicom/tool/write_all.dart` (the matrix and the refusals it expects), `dartdicom/test/written_test.dart` (the comparison), `dartdicom/test/dcmdump_allowlist.txt` (DCMTK messages allowed, by version, each with its reason) |
-| Add a lenient-read repair | `dartdicom/lib/src/read/parser.dart`, plus its `RepairKind` in `dartdicom/lib/src/dataset/read_report.dart` and a case in `test/read/lenient_test.dart` *(amended)* |
+| Add a lenient-read repair | by what it repairs: file framing in `dartdicom/lib/src/read/parser.dart`; an element header (VR, explicit or implicit) in `read/parse/header.dart`; one that is only reported in `read/parse/checks.dart`; structure (truncation, trailing bytes) in `read/parse/walker.dart`. Plus its `RepairKind` in `dartdicom/lib/src/dataset/read_report.dart` and a case in `test/read/lenient_test.dart` *(amended)* |
 | Add an uncompressed transfer syntax | `dartdicom/lib/src/uid/transfer_syntax.dart`: a descriptor (explicit VR? endianness, deflated, encapsulated) that both the reader and the writer read |
 | Change PHI masking | `dartdicom/lib/src/redact/` |
 | Add a PDU sub-item (e.g. user identity) | `dartdicom_net/lib/src/pdu/items.dart` |
@@ -315,6 +315,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-28 ★ | The committed fixtures, golden files and `PROVENANCE.md` reproduce exactly from the pinned tools | `fixtures check` via `scripts/check_fixtures.sh` (in the dry gates) |
 | I-29 ★ | In core, only `vr/value_codec.dart` imports `vr/codec/`; the rest of `lib/` reaches the codec families through it (`export … show`) | architecture test |
 | I-30 ★ | Malformed input never throws anything but a `DicomParseException` on read (a `DicomWriteException` on write), and the inflater only a `FormatException` (PRD *Untrusted input*) | `dartdicom/test/fuzz_test.dart`: seeded, 2,000 cases per group in the dry gates over mutated fixtures, the force path and the inflater; `just fuzz` runs more |
+| I-31 ★ | In core, only `read/parser.dart` imports `read/parse/`; the rest of `lib/` reads through `parsePart10` and `parseDataset` | architecture test |
 
 ## 9. CI and release
 
