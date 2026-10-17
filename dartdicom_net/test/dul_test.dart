@@ -181,6 +181,38 @@ void main() {
     });
   });
 
+  group('the read-ahead (F42)', () {
+    test('reads the next PDU only once the last is taken', () async {
+      final lines = <String>[];
+      final (a, b) = InMemoryTransport.pair();
+      final requestor = Dul.requestor(a,
+          trace: Trace(TraceSink.lines(lines.add), level: TraceLevel.pdu));
+      final peer = _Raw(b);
+      final answer = requestor.requestAssociation(_rq);
+      await peer.next();
+      await peer.send(_ac);
+      await answer;
+      await peer.send(_data);
+      await peer.send(_data);
+      int read() => lines.where((l) => l.startsWith('← PDU P-DATA-TF')).length;
+      await pumpEventQueue();
+      expect(read(), 1);
+      await requestor.receive();
+      await pumpEventQueue();
+      expect(read(), 2);
+    });
+
+    test('an abort drops the PDU not yet taken: receive throws the cause',
+        () async {
+      final (requestor, acceptor) = await _established();
+      await acceptor.send(_data);
+      await pumpEventQueue();
+      await requestor.abort();
+      await expectLater(
+          requestor.receive(), throwsA(isA<AssociationAborted>()));
+    });
+  });
+
   group('the acceptor', () {
     test('a PDU before the A-ASSOCIATE-RQ is aborted (AA-1)', () async {
       final (a, b) = InMemoryTransport.pair();

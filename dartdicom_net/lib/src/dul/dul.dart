@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:typed_data';
 
 import '../errors.dart';
@@ -7,6 +6,7 @@ import '../fsm/table.dart';
 import '../pdu/pdus.dart';
 import '../transport/transport.dart';
 import 'framer.dart';
+import 'read_ahead.dart';
 import '../timeouts.dart';
 import '../trace/record.dart';
 import '../trace/trace.dart';
@@ -46,7 +46,7 @@ final class Dul {
     _pdus = StreamIterator(
         _transport.incoming.transform(PduFramer(maxLength: _pduCap)));
     _local(opening); // AE-1 or AE-5: the transport is already connected
-    if (!isRequestor) _startTimer(TimeoutKind.acse); // ARTIM, Sta2
+    if (!isRequestor) _startAcseTimer(); // ARTIM, Sta2
     unawaited(_read());
   }
 
@@ -75,10 +75,8 @@ final class Dul {
           : maxPduBytes;
   var _state = UlState.sta1;
 
-  /// PDUs for the association layer, at most one (the read-ahead).
-  final _inbox = Queue<Pdu>();
-  Completer<void>? _arrived;
-  Completer<void>? _taken;
+  /// The PDU for the association layer that [receive] has yet to take.
+  final _readAhead = ReadAhead();
 
   final _ended = Completer<void>();
   DimseException? _cause;
@@ -113,7 +111,7 @@ final class Dul {
   Future<AssociateAc> requestAssociation(AssociateRq rq) async {
     _local(UlEvent.evt2); // AE-2
     await _transmit(rq);
-    _startTimer(TimeoutKind.acse);
+    _startAcseTimer();
     final answer = await receive();
     if (answer is AssociateAc) return answer;
     throw await _violation('expected A-ASSOCIATE-AC or -RJ, but got $answer');
@@ -139,7 +137,7 @@ final class Dul {
     _local(UlEvent.evt8);
     _end(AssociationAborted('this side rejected the association'));
     await _transmit(rj);
-    _startTimer(TimeoutKind.acse); // ARTIM: the requestor closes
+    _startAcseTimer(); // ARTIM: the requestor closes
   }
 
   /// Sends one P-DATA-TF (DT-1).
@@ -157,17 +155,9 @@ final class Dul {
   /// [AssociationAborted], [AssociationRejected] or
   /// [DimseProtocolException].
   Future<Pdu?> receive() async {
-    while (_inbox.isEmpty) {
-      if (_ended.isCompleted) {
-        if (_cause case final cause?) throw cause;
-        return null;
-      }
-      await (_arrived ??= Completer<void>()).future;
-    }
-    final pdu = _inbox.removeFirst();
-    _wake(_taken);
-    _taken = null;
-    return pdu;
+    if (await _readAhead.take() case final pdu?) return pdu;
+    if (_cause case final cause?) throw cause;
+    return null;
   }
 
   /// Sends A-RELEASE-RQ and waits for A-RELEASE-RP (AR-1, AR-3), through a
@@ -183,7 +173,7 @@ final class Dul {
     }
     _local(UlEvent.evt11);
     await _transmit(const ReleaseRq());
-    _startTimer(TimeoutKind.acse);
+    _startAcseTimer();
     await _ended.future;
     if (_cause case final cause?) throw cause;
   }
@@ -209,9 +199,7 @@ final class Dul {
   Future<void> _read() async {
     try {
       while (!_closedLocally) {
-        while (_inbox.isNotEmpty && !_ended.isCompleted) {
-          await (_taken ??= Completer<void>()).future;
-        }
+        await _readAhead.vacated();
         if (_closedLocally) return;
         final Uint8List bytes;
         try {
@@ -266,15 +254,8 @@ final class Dul {
                 ? 'the connection closed'
                 : 'an invalid PDU ($invalid)')
             : '${pdu.summary} (${bytes?.length ?? 0} B)',
-        transition: cell == null
-            ? '${_name(from)} + ${_name(event)}: blank'
-            : _transitionText(
-                from,
-                event,
-                cell.$1,
-                cell.$1 == UlAction.ar8
-                    ? (isRequestor ? UlState.sta9 : UlState.sta10)
-                    : cell.$2),
+        transition: describeTransition(
+            from, event, cell == null ? null : (cell.$1, _next(cell))),
         bytes: bytes,
         carriesValues: pdu is PDataTf);
     if (cell == null) {
@@ -282,20 +263,18 @@ final class Dul {
       return _protocolAbort('unexpected ${pdu ?? event.name} in ${from.name}',
           reason: 2);
     }
-    final (action, nominal) = cell;
-    _state = action == UlAction.ar8
-        ? (isRequestor ? UlState.sta9 : UlState.sta10)
-        : nominal;
+    final (action, _) = cell;
+    _state = _next(cell);
     switch (action) {
       case UlAction.ae3:
         _stopTimer();
-        _deliver(pdu!);
+        _readAhead.hold(pdu!);
         _armIdle();
       case UlAction.ae6:
         _stopTimer(); // ARTIM
-        _deliver(pdu!);
+        _readAhead.hold(pdu!);
       case UlAction.dt2:
-        _deliver(pdu!);
+        _readAhead.hold(pdu!);
       case UlAction.ae4:
         final rj = pdu! as AssociateRj;
         _end(AssociationRejected(
@@ -307,7 +286,7 @@ final class Dul {
         _end(null);
         _local(UlEvent.evt14);
         await _transmit(const ReleaseRp());
-        _startTimer(TimeoutKind.acse); // ARTIM: the requestor closes
+        _startAcseTimer(); // ARTIM: the requestor closes
       case UlAction.ar3:
         _end(null);
         await _closeLocally();
@@ -325,7 +304,7 @@ final class Dul {
         _end(null); // the release is confirmed; answer the peer's in turn
         _local(UlEvent.evt14); // AR-4 → Sta13
         await _transmit(const ReleaseRp());
-        _startTimer(TimeoutKind.acse); // ARTIM: the requestor closes
+        _startAcseTimer(); // ARTIM: the requestor closes
       case UlAction.aa1:
         // A PDU before the A-ASSOCIATE-RQ.
         _end(because ??
@@ -381,6 +360,12 @@ final class Dul {
       invalid: problem,
       because: DimseProtocolException('invalid PDU ($problem)'));
 
+  /// The state [cell] leads to. A release collision's (AR-8) depends on
+  /// the role (PS3.8 §9.2.8), so the table can't say it.
+  UlState _next(Transition cell) => cell.$1 == UlAction.ar8
+      ? (isRequestor ? UlState.sta9 : UlState.sta10)
+      : cell.$2;
+
   /// Aborts for a peer's protocol violation and records it.
   Future<void> _protocolAbort(String problem, {required int reason}) async {
     _end(DimseProtocolException(problem));
@@ -398,10 +383,11 @@ final class Dul {
 
   // ── Timers ────────────────────────────────────────────────────────────────
 
-  void _startTimer(TimeoutKind kind) {
+  /// Starts the ACSE timer, which is also ARTIM.
+  void _startAcseTimer() {
     _timer?.cancel();
     final after = timeouts.acse;
-    _timer = Timer(after, () => unawaited(_expired(kind, after)));
+    _timer = Timer(after, () => unawaited(_expired(TimeoutKind.acse, after)));
   }
 
   void _stopTimer() {
@@ -432,24 +418,15 @@ final class Dul {
 
   // ── Plumbing ──────────────────────────────────────────────────────────────
 
-  void _deliver(Pdu pdu) {
-    _inbox.add(pdu);
-    _wake(_arrived);
-    _arrived = null;
-  }
-
   /// Records the end, once: [cause], or `null` for a release.
   void _end(DimseException? cause) {
     if (_ended.isCompleted) return;
     _idle?.cancel();
     if (_state != UlState.sta13) _stopTimer();
     _cause = cause;
-    if (cause != null) _inbox.clear();
     _ended.complete();
-    _wake(_arrived);
-    _arrived = null;
-    _wake(_taken);
-    _taken = null;
+    // An abnormal end drops the PDU not yet taken; a release keeps it.
+    _readAhead.close(drop: cause != null);
   }
 
   void _throwIfEnded() {
@@ -470,21 +447,14 @@ final class Dul {
       _throwIfEnded();
       throw StateError('${event.name} is not allowed in ${_state.name}');
     }
-    _localTransition = _transitionText(_state, event, cell.$1, cell.$2);
+    _localTransition = describeTransition(_state, event, cell);
     _state = cell.$2;
     return cell.$1;
   }
 
   /// Sends [pdu]. A failed send means the connection is gone.
   Future<void> _transmit(Pdu pdu) async {
-    final bytes = pdu.encode();
-    trace?.recordPdu(
-        outgoing: true,
-        summary: '${pdu.summary} (${bytes.length} B)',
-        transition: _localTransition,
-        bytes: bytes,
-        carriesValues: pdu is PDataTf);
-    _localTransition = null;
+    final bytes = _encode(pdu);
     try {
       await _transport.send(bytes);
     } on Object {
@@ -495,19 +465,26 @@ final class Dul {
   }
 
   Future<void> _sendAbort({required int source, required int reason}) async {
-    final abort = Abort(source: source, reason: reason);
-    final bytes = abort.encode();
-    trace?.recordPdu(
-        outgoing: true,
-        summary: '${abort.summary} (${bytes.length} B)',
-        transition: _localTransition,
-        bytes: bytes);
-    _localTransition = null;
+    final bytes = _encode(Abort(source: source, reason: reason));
     try {
       await _transport.send(bytes);
     } on Object {
       // The connection may already be gone; closing is all that is left.
     }
+  }
+
+  /// Encodes [pdu] for sending, and traces it with the local transition
+  /// that sends it.
+  Uint8List _encode(Pdu pdu) {
+    final bytes = pdu.encode();
+    trace?.recordPdu(
+        outgoing: true,
+        summary: '${pdu.summary} (${bytes.length} B)',
+        transition: _localTransition,
+        bytes: bytes,
+        carriesValues: pdu is PDataTf);
+    _localTransition = null;
+    return bytes;
   }
 
   /// Closes the transport and stops reading it, so no subscription keeps
@@ -525,20 +502,5 @@ final class Dul {
       // Already closed.
     }
     await _pdus.cancel();
-  }
-
-  static String _transitionText(
-          UlState from, UlEvent event, UlAction action, UlState to) =>
-      '${_name(from)} + ${_name(event)} → ${_name(action)} → ${_name(to)}';
-
-  /// `sta6` → `Sta6`, `evt10` → `Evt10`, `dt2` → `DT-2`.
-  static String _name(Enum e) => switch (e) {
-        UlAction() =>
-          '${e.name.substring(0, 2).toUpperCase()}-${e.name.substring(2)}',
-        _ => '${e.name[0].toUpperCase()}${e.name.substring(1)}',
-      };
-
-  static void _wake(Completer<void>? waiter) {
-    if (waiter != null && !waiter.isCompleted) waiter.complete();
   }
 }

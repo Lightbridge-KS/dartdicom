@@ -349,3 +349,17 @@ const Map<(UlState, UlEvent), Transition> transitions = {
 /// The transition for [event] in [state], or `null` for a blank cell.
 Transition? transition(UlState state, UlEvent event) =>
     transitions[(state, event)];
+
+/// [event] in [from] in PS3.8's names, as the trace shows it: with the
+/// transition [to] it took, `Sta6 + Evt10 → DT-2 → Sta6`; without one,
+/// `Sta6 + Evt3: blank`.
+String describeTransition(UlState from, UlEvent event, [Transition? to]) =>
+    '${_name(from)} + ${_name(event)}'
+    '${to == null ? ': blank' : ' → ${_name(to.$1)} → ${_name(to.$2)}'}';
+
+/// `sta6` → `Sta6`, `evt10` → `Evt10`, `dt2` → `DT-2`.
+String _name(Enum e) => switch (e) {
+      UlAction() =>
+        '${e.name.substring(0, 2).toUpperCase()}-${e.name.substring(2)}',
+      _ => '${e.name[0].toUpperCase()}${e.name.substring(1)}',
+    };
