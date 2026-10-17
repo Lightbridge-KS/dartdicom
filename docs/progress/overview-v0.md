@@ -58,9 +58,9 @@ Planned 2026-10-17. Each step ends with the dry gates green.
 - [x] **3. Pixel** (`5c2d543`). Bits Allocated 8 decodes too (the same path). The Wasm gate now also compiles `dartdicom_pixel`.
   - `ds.pixels.frame(i)` → `PixelArray`, with BitsStored masking; Modality LUT; linear VOI (PS3.3 C.11.2.1.2.1); MONOCHROME1; `ds.voiWindow()`; `DisplayBuffer` (`gray`, `toRgba()`).
   - Tests: sha256 against golden for the 16-bit monochrome fixtures.
-- [x] **4. Net through C-ECHO.** The live echo passed on its first run. Transports (socket, in-memory), PDUs (with role selection), framing, the FSM (requestor rows), ACSE, `ApplicationEntity`, `associate` / `sendCEcho` / `release` / `abort`, and `DimseStatus`.
+- [x] **4. Net through C-ECHO** (`81b9de5`). The live echo passed on its first run. Transports (socket, in-memory), PDUs (with role selection), framing, the FSM (requestor rows), ACSE, `ApplicationEntity`, `associate` / `sendCEcho` / `release` / `abort`, and `DimseStatus`.
   - Tests: hand-checked PS3.8 vectors, a captured Orthanc A-ASSOCIATE-AC, and a live echo.
-- [ ] **5. DIMSE and C-FIND.** Command sets, the fragmenter, the assembler (every PDV of every P-DATA-TF), and message IDs. `sendCFind` → `Stream<Dataset>` (S5).
+- [x] **5. DIMSE and C-FIND.** Live STUDY and SERIES finds passed on the first run. Command sets, the fragmenter, the assembler (every PDV of every P-DATA-TF), and message IDs. `sendCFind` → `Stream<Dataset>` (S5).
   - Tests: a scripted peer, and a live find at STUDY and SERIES level.
 - [ ] **6. C-GET and sinks.** `PresentationContexts.commonStorage` plus role items (≤ 128 contexts); `sendCGet` → `Stream<RetrieveProgress>`; `InstanceSink`, `ReceivedInstance`, `MemorySink`, `DirectorySink`.
   - Tests: I-20, I-21, and a live series get.

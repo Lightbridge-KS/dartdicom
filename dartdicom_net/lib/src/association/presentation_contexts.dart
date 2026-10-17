@@ -20,6 +20,33 @@ final class PresentationContext {
   final List<Uid> transferSyntaxes;
 }
 
+/// A query/retrieve information model: which hierarchy a query walks
+/// (PS3.4 §C.3), and its SOP classes for each operation.
+enum QueryRetrieveModel {
+  /// Patient → Study → Series → Image.
+  patientRoot(
+      SopClasses.patientRootQueryRetrieveInformationModelFind,
+      SopClasses.patientRootQueryRetrieveInformationModelGet,
+      SopClasses.patientRootQueryRetrieveInformationModelMove),
+
+  /// Study → Series → Image.
+  studyRoot(
+      SopClasses.studyRootQueryRetrieveInformationModelFind,
+      SopClasses.studyRootQueryRetrieveInformationModelGet,
+      SopClasses.studyRootQueryRetrieveInformationModelMove);
+
+  const QueryRetrieveModel(this.find, this.get, this.move);
+
+  /// The C-FIND SOP class.
+  final Uid find;
+
+  /// The C-GET SOP class.
+  final Uid get;
+
+  /// The C-MOVE SOP class.
+  final Uid move;
+}
+
 /// Ready-made context lists for `ApplicationEntity.requestedContexts`
 /// (surface S2).
 abstract final class PresentationContexts {

@@ -8,6 +8,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_net/dartdicom_net.dart';
 import 'package:test/test.dart';
 
@@ -34,6 +35,31 @@ void main() {
       File('test/vectors/orthanc_associate_ac.bin')
           .writeAsBytesSync(recording.firstPdu());
     }
+  }, skip: _skip);
+
+  test('C-FIND at STUDY, then SERIES level', () async {
+    const ae = ApplicationEntity(
+        aeTitle: 'DARTDICOM',
+        requestedContexts: PresentationContexts.studyRootQueryRetrieve);
+    final assoc = await ae.associate(_host, _port, aeTitle: _aet);
+    final studies = await assoc
+        .sendCFind(Dataset()
+          ..set(DicomTags.queryRetrieveLevel, 'STUDY')
+          ..setEmpty(DicomTags.studyInstanceUid)
+          ..setEmpty(DicomTags.patientId))
+        .toList();
+    expect(studies, isNotEmpty, reason: 'seed the test PACS (just pacs-seed)');
+    final study = studies.first.require(DicomTags.studyInstanceUid);
+    final series = await assoc
+        .sendCFind(Dataset()
+          ..set(DicomTags.queryRetrieveLevel, 'SERIES')
+          ..set(DicomTags.studyInstanceUid, study)
+          ..setEmpty(DicomTags.seriesInstanceUid)
+          ..setEmpty(DicomTags.modality))
+        .toList();
+    expect(series, isNotEmpty);
+    expect(series.first.get(DicomTags.seriesInstanceUid), isNotNull);
+    await assoc.release();
   }, skip: _skip);
 }
 

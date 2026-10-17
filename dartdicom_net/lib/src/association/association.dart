@@ -10,6 +10,7 @@ import '../dimse/status.dart';
 import '../dul/dul.dart';
 import '../errors.dart';
 import '../pdu/pdus.dart';
+import 'presentation_contexts.dart';
 import '../transport/transport.dart';
 import 'application_entity.dart';
 
@@ -58,6 +59,51 @@ final class Association {
         return DimseStatus(rsp.status ?? 0xC000);
       });
 
+  /// Sends C-FIND-RQ with [query] and streams the matches (PRD N-07).
+  ///
+  /// [query] is a plain [Dataset] (surface S3): matching keys hold values,
+  /// return keys are empty (`setEmpty`), and (0008,0052) QueryRetrieveLevel
+  /// says the level. The stream completes on a final Success, Warning or
+  /// Cancel; a final Failure is a [DimseFailureException] stream error, so
+  /// a failed query never looks like "no matches" (surface S5).
+  ///
+  /// Cancelling the subscription aborts the association in this version
+  /// (C-CANCEL comes later).
+  Stream<Dataset> sendCFind(Dataset query,
+      {QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) async* {
+    final context = _contextFor(model.find, 'C-FIND');
+    _enter();
+    var finished = false;
+    try {
+      final id = _nextMessageId();
+      await _send(DimseMessage(
+          context.id,
+          requestCommand(CommandField.cFindRq, id, model.find,
+              hasDataset: true, priority: mediumPriority),
+          query.toBytes(transferSyntax: context.transferSyntax)));
+      while (true) {
+        final rsp = await _responseTo(id, CommandField.cFindRsp);
+        switch (DimseStatus(rsp.status ?? 0xC000)) {
+          case DimsePending():
+            final identifier = rsp.dataset;
+            if (identifier != null) {
+              yield Dataset.fromBytes(identifier,
+                  transferSyntax: context.transferSyntax);
+            }
+          case final DimseFailure failure:
+            finished = true;
+            throw DimseFailureException(failure);
+          case _:
+            finished = true;
+            return;
+        }
+      }
+    } finally {
+      _busy = false;
+      if (!finished) await _dul.abort();
+    }
+  }
+
   /// Releases the association gracefully (A-RELEASE) and closes the
   /// connection.
   Future<void> release() => _exclusive(_dul.release);
@@ -68,16 +114,20 @@ final class Association {
   /// Runs [operation] alone: one DIMSE operation at a time, since no
   /// asynchronous operations window is negotiated.
   Future<T> _exclusive<T>(Future<T> Function() operation) async {
-    if (_busy) {
-      throw StateError('another operation is still running on this '
-          'association; await it (or cancel its stream) first');
-    }
-    _busy = true;
+    _enter();
     try {
       return await operation();
     } finally {
       _busy = false;
     }
+  }
+
+  void _enter() {
+    if (_busy) {
+      throw StateError('another operation is still running on this '
+          'association; await it (or cancel its stream) first');
+    }
+    _busy = true;
   }
 
   AcceptedContext _contextFor(Uid sopClass, String operation) =>
