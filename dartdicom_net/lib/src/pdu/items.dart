@@ -7,6 +7,40 @@ import 'bytes.dart';
 /// The DICOM Application Context Name, the only one there is.
 const dicomApplicationContext = '1.2.840.10008.3.1.1.1';
 
+/// The item types of A-ASSOCIATE-RQ/AC, named as in PS3.8 §9.3 and PS3.7
+/// Annex D.
+abstract final class ItemType {
+  /// Application Context Item (10H).
+  static const applicationContext = 0x10;
+
+  /// Presentation Context Item, as proposed in A-ASSOCIATE-RQ (20H).
+  static const presentationContextRq = 0x20;
+
+  /// Presentation Context Item, as answered in A-ASSOCIATE-AC (21H).
+  static const presentationContextAc = 0x21;
+
+  /// Abstract Syntax Sub-Item (30H).
+  static const abstractSyntax = 0x30;
+
+  /// Transfer Syntax Sub-Item (40H).
+  static const transferSyntax = 0x40;
+
+  /// User Information Item (50H).
+  static const userInformation = 0x50;
+
+  /// Maximum Length Sub-Item (51H).
+  static const maxLength = 0x51;
+
+  /// Implementation Class UID Sub-Item (52H).
+  static const implementationClassUid = 0x52;
+
+  /// SCP/SCU Role Selection Sub-Item (54H).
+  static const roleSelection = 0x54;
+
+  /// Implementation Version Name Sub-Item (55H).
+  static const implementationVersionName = 0x55;
+}
+
 /// A proposed presentation context (item 0x20): one abstract syntax and the
 /// transfer syntaxes the requestor offers for it.
 final class ProposedContext {
@@ -17,13 +51,13 @@ final class ProposedContext {
   final String abstractSyntax;
   final List<String> transferSyntaxes;
 
-  void encode(PduWriter w) => w.item(0x20, (b) {
+  void encode(PduWriter w) => w.item(ItemType.presentationContextRq, (b) {
         b
           ..u8(id)
           ..zeros(3)
-          ..item(0x30, (s) => s.ascii(abstractSyntax));
+          ..item(ItemType.abstractSyntax, (s) => s.ascii(abstractSyntax));
         for (final ts in transferSyntaxes) {
-          b.item(0x40, (s) => s.ascii(ts));
+          b.item(ItemType.transferSyntax, (s) => s.ascii(ts));
         }
       });
 
@@ -32,19 +66,14 @@ final class ProposedContext {
     r.skip(3);
     var abstractSyntax = '';
     final transferSyntaxes = <String>[];
-    while (r.at < end) {
-      final type = r.u8();
-      r.skip(1);
-      final length = r.u16();
+    r.items(end, (type, itemEnd) {
       switch (type) {
-        case 0x30:
-          abstractSyntax = r.text(length);
-        case 0x40:
-          transferSyntaxes.add(r.text(length));
-        default:
-          r.skip(length);
+        case ItemType.abstractSyntax:
+          abstractSyntax = r.text(itemEnd - r.at);
+        case ItemType.transferSyntax:
+          transferSyntaxes.add(r.text(itemEnd - r.at));
       }
-    }
+    });
     return ProposedContext(id, abstractSyntax, transferSyntaxes);
   }
 }
@@ -64,13 +93,13 @@ final class ContextResult {
 
   bool get accepted => result == 0;
 
-  void encode(PduWriter w) => w.item(0x21, (b) {
+  void encode(PduWriter w) => w.item(ItemType.presentationContextAc, (b) {
         b
           ..u8(id)
           ..u8(0)
           ..u8(result)
           ..u8(0)
-          ..item(0x40, (s) => s.ascii(transferSyntax));
+          ..item(ItemType.transferSyntax, (s) => s.ascii(transferSyntax));
       });
 
   static ContextResult decode(PduReader r, int end) {
@@ -79,16 +108,9 @@ final class ContextResult {
     final result = r.u8();
     r.skip(1);
     var ts = '';
-    while (r.at < end) {
-      final type = r.u8();
-      r.skip(1);
-      final length = r.u16();
-      if (type == 0x40) {
-        ts = r.text(length);
-      } else {
-        r.skip(length);
-      }
-    }
+    r.items(end, (type, itemEnd) {
+      if (type == ItemType.transferSyntax) ts = r.text(itemEnd - r.at);
+    });
     return ContextResult(id, result, ts);
   }
 }
@@ -101,6 +123,20 @@ final class RoleSelection {
   final String sopClass;
   final bool scu;
   final bool scp;
+
+  void encode(PduWriter w) => w.item(ItemType.roleSelection, (s) {
+        s
+          ..u16(sopClass.length)
+          ..ascii(sopClass)
+          ..u8(scu ? 1 : 0)
+          ..u8(scp ? 1 : 0);
+      });
+
+  /// Decodes the body of a role selection sub-item.
+  static RoleSelection decode(PduReader r) {
+    final uidLength = r.u16();
+    return RoleSelection(r.text(uidLength), scu: r.u8() == 1, scp: r.u8() == 1);
+  }
 }
 
 /// The User Information item (0x50).
@@ -124,21 +160,17 @@ final class UserInformation {
   final List<(int, Uint8List)> otherItems;
 
   // pynetdicom's order: 51, 52, 55, then the 54 role items (I-12).
-  void encode(PduWriter w) => w.item(0x50, (b) {
+  void encode(PduWriter w) => w.item(ItemType.userInformation, (b) {
         b
-          ..item(0x51, (s) => s.u32(maxLength))
-          ..item(0x52, (s) => s.ascii(implementationClassUid));
+          ..item(ItemType.maxLength, (s) => s.u32(maxLength))
+          ..item(ItemType.implementationClassUid,
+              (s) => s.ascii(implementationClassUid));
         if (implementationVersionName != null) {
-          b.item(0x55, (s) => s.ascii(implementationVersionName!));
+          b.item(ItemType.implementationVersionName,
+              (s) => s.ascii(implementationVersionName!));
         }
         for (final role in roles) {
-          b.item(0x54, (s) {
-            s
-              ..u16(role.sopClass.length)
-              ..ascii(role.sopClass)
-              ..u8(role.scu ? 1 : 0)
-              ..u8(role.scp ? 1 : 0);
-          });
+          role.encode(b);
         }
         for (final (type, body) in otherItems) {
           b.item(type, (s) => s.bytes(body));
@@ -151,27 +183,20 @@ final class UserInformation {
     String? versionName;
     final roles = <RoleSelection>[];
     final others = <(int, Uint8List)>[];
-    while (r.at < end) {
-      final type = r.u8();
-      r.skip(1);
-      final length = r.u16();
-      final itemEnd = r.at + length;
+    r.items(end, (type, itemEnd) {
       switch (type) {
-        case 0x51:
+        case ItemType.maxLength:
           maxLength = r.u32();
-        case 0x52:
-          implementationClassUid = r.text(length);
-        case 0x55:
-          versionName = r.text(length);
-        case 0x54:
-          final uidLength = r.u16();
-          roles.add(RoleSelection(r.text(uidLength),
-              scu: r.u8() == 1, scp: r.u8() == 1));
+        case ItemType.implementationClassUid:
+          implementationClassUid = r.text(itemEnd - r.at);
+        case ItemType.implementationVersionName:
+          versionName = r.text(itemEnd - r.at);
+        case ItemType.roleSelection:
+          roles.add(RoleSelection.decode(r));
         default:
-          others.add((type, Uint8List.fromList(r.take(length))));
+          others.add((type, Uint8List.fromList(r.take(itemEnd - r.at))));
       }
-      r.at = itemEnd;
-    }
+    });
     return UserInformation(
         maxLength: maxLength,
         implementationClassUid: implementationClassUid,

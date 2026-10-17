@@ -133,5 +133,24 @@ void main() {
       expect(() => Pdu.decode(_hex('04 00 00 00 00 06 00 00 00 09 01 03')),
           throwsFormatException);
     });
+    test('a sub-item running past the item that holds it', () {
+      final bytes = const AssociateRq(
+        calledAeTitle: 'B',
+        callingAeTitle: 'A',
+        contexts: [
+          ProposedContext(1, '1.2', ['1.2'])
+        ],
+        userInformation:
+            UserInformation(maxLength: 0, implementationClassUid: '1.2'),
+      ).encode();
+      // The presentation context item starts at 99 (after the 74-byte
+      // header and the 25-byte application context item); its transfer
+      // syntax sub-item is at 114. Stretch that sub-item into the User
+      // Information item that follows.
+      expect(bytes.sublist(99, 101), _hex('20 00'));
+      expect(bytes.sublist(114, 118), _hex('40 00 00 03'));
+      bytes[117] = 0x09;
+      expect(() => Pdu.decode(bytes), throwsFormatException);
+    });
   });
 }

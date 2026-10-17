@@ -96,4 +96,24 @@ final class PduReader {
   /// too, which are never significant in AE titles or UIDs).
   String text(int n) =>
       latin1.decode(take(n)).replaceAll(RegExp(r'[\x00 ]+$'), '').trimLeft();
+
+  /// Walks the items from [at] to [end], each `type | reserved | length (2)
+  /// | body`: the reading side of [PduWriter.item]. [each] reads one body,
+  /// which ends at `itemEnd`; whatever it leaves unread is skipped. An item
+  /// that runs past [end], the end of the item or PDU holding it, is a
+  /// [FormatException].
+  void items(int end, void Function(int type, int itemEnd) each) {
+    while (at < end) {
+      final type = u8();
+      skip(1);
+      final length = u16();
+      final itemEnd = at + length;
+      if (itemEnd > end) {
+        throw const FormatException(
+            'an item runs past the item or PDU that holds it');
+      }
+      each(type, itemEnd);
+      at = itemEnd;
+    }
+  }
 }

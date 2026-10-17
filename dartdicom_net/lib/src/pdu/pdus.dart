@@ -82,13 +82,13 @@ final class AssociateRq extends Pdu {
     var appContext = '';
     final contexts = <ProposedContext>[];
     UserInformation? userInfo;
-    _items(r, (type, end) {
+    r.items(r.end, (type, end) {
       switch (type) {
-        case 0x10:
+        case ItemType.applicationContext:
           appContext = r.text(end - r.at);
-        case 0x20:
+        case ItemType.presentationContextRq:
           contexts.add(ProposedContext.decode(r, end));
-        case 0x50:
+        case ItemType.userInformation:
           userInfo = UserInformation.decode(r, end);
       }
     });
@@ -140,13 +140,13 @@ final class AssociateAc extends Pdu {
     var appContext = '';
     final results = <ContextResult>[];
     UserInformation? userInfo;
-    _items(r, (type, end) {
+    r.items(r.end, (type, end) {
       switch (type) {
-        case 0x10:
+        case ItemType.applicationContext:
           appContext = r.text(end - r.at);
-        case 0x21:
+        case ItemType.presentationContextAc:
           results.add(ContextResult.decode(r, end));
-        case 0x50:
+        case ItemType.userInformation:
           userInfo = UserInformation.decode(r, end);
       }
     });
@@ -320,7 +320,7 @@ void _encodeHeader(
     ..aeTitle(called)
     ..aeTitle(calling)
     ..zeros(32)
-    ..item(0x10, (s) => s.ascii(appContext));
+    ..item(ItemType.applicationContext, (s) => s.ascii(appContext));
 }
 
 (String, String) _decodeHeader(PduReader r) {
@@ -329,17 +329,4 @@ void _encodeHeader(
   final calling = r.text(16);
   r.skip(32);
   return (called, calling);
-}
-
-/// Walks variable items: `type | reserved | length (2) | body`.
-void _items(PduReader r, void Function(int type, int end) each) {
-  while (!r.done) {
-    final type = r.u8();
-    r.skip(1);
-    final length = r.u16();
-    final end = r.at + length;
-    if (end > r.end) throw const FormatException('an item runs past its PDU');
-    each(type, end);
-    r.at = end;
-  }
 }
