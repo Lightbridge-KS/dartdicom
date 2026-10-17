@@ -107,8 +107,12 @@ Each step ends with the dry and floor gates green, and `just live` after a read 
   - `WriteOptions`; the copy rule by VR; the swap rule (OW Pixel Data by Bits Allocated, 8-bit included).
   - Stale group lengths dropped.
   - Writing BE is refused with the fix named.
-- [x] **4c. Implementation identity and I-17.** The six `SC_rgb*` corpus files now round-trip byte for byte; the ratchet is down to 11, all scheduled for step 5. "Changed" means not verbatim, or the meta was edited.
-- [ ] **5. Lenient reading and `ReadReport`.** `force`, syntax detection, UN rules, pydicom's ambiguous-VR rules, truncation, wrong lengths, VM, `tags`.
+- [x] **4c. Implementation identity and I-17** (`218bb8d`). The six `SC_rgb*` corpus files now round-trip byte for byte; the ratchet is down to 11, all scheduled for step 5. "Changed" means not verbatim, or the meta was edited.
+- [x] **5. Lenient reading and `ReadReport`.** All 85 corpus files agree with pydicom and pass F41; `corpus_expected.txt` is empty. One named tolerance remains (*Confirmed contracts*).
+  - `ReadReport` on `file.report` and `ds.report`: 14 repair kinds, each with a case in `test/read/lenient_test.dart`.
+  - `ReadOptions.force` and `tags`; syntax detection; the UN rules (`unReplaced`, `unSequence`); pydicom's ambiguous-VR rules settled once a dataset level is read; truncation kept partial; wrong lengths decode the whole values.
+  - F41 shared by the fixture and corpus round trips (`test/support/f41.dart`), with two refinements recorded in the blueprint.
+  - Divergences from pydicom: a wrong-length number decodes (pydicom throws on access); a dataset that ends inside an undefined-length value keeps what came before (pydicom empties it).
 - [ ] **6. Written-file gate.** `tool/write_all.dart` → pydicom exports → the Dart comparator (I-18); `dcmdump` with a versioned allowlist.
 - [ ] **7. Fuzz, PHI canary, close.** The parser, inflater and `force` path fuzzed; the sentinel scenario (I-9).
 
@@ -183,6 +187,9 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| pydicom 3.0.2 empties a dataset that ends inside an undefined-length value: `read_dataset` builds it in a dict comprehension, so the `EOFError` loses every element read before (`emri_small_jpeg_2k_lossless_too_short.dcm`). dartdicom keeps them and reports `valueDropped`; the comparator's only tolerance excuses exactly this. | pydicom `filereader.py`, 2026-10-17 |
+| pydicom's ambiguous-VR rules key on the *dataset's* encoding as read (`original_encoding`): implicit Pixel Data and waveform data are OW even where one element was read implicitly in an explicit dataset. | pydicom 3.0.2 `filewriter.py`, 2026-10-17 |
+| The repairs the pydicom-data corpus needs: 37 `unReplaced` (`explicit_VR-UN.dcm`, `bad_sequence.dcm`), 5 `staleGroupLength` (`693_*`), 5 `noPreamble` (4 JPEG-LS files with meta at offset 0, `OT-PAL-8-face.dcm`), 1 `noFileMeta`, 1 `valueDropped`. No file triggers a syntax, length or VM repair. The 4 JPEG-LS files carry no SOP UIDs anywhere, so they read but can't be written. | `corpus_test.dart` census, 2026-10-17 |
 | Real files carry stale group lengths: pydicom-data's `693_UNCI.dcm` says (7FE0,0000) = 105,406 for 524 KB of uncompressed Pixel Data, left over from its compressed sibling. The writer drops a group length that no longer equals its group. | `corpus_test.dart`, 2026-10-17 |
 | pydicom decodes 8-bit OW Big Endian Pixel Data by swapping 16-bit words across the whole padded value, so an odd image's last pixel comes from the padding word (`SC_rgb_small_odd_big_endian.dcm`). `dartdicom_pixel` matches it. | pydicom 3.0.2, 2026-10-17 |
 | A header-only read of an 8 MiB file through `FileSource` reads one 64 KiB window, and so does a full read with the Pixel Data deferred. A deferred `Dataset` moves to another isolate and loads its value there (I-14). Async and sync reads agree on every fixture in all three modes. | `file_source_test.dart`, 2026-10-17 |

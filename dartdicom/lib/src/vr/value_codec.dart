@@ -5,10 +5,11 @@ import '../tag/tag.dart';
 import 'codec/number_codec.dart';
 import 'codec/text_codec.dart';
 import 'codec/vr_family.dart';
+import 'ambiguous.dart' show lutDescriptorTags;
 import 'vr.dart';
 
 export 'codec/vr_family.dart'
-    show ValueFamily, familyOf, isBytesVr, isCharsetVr, isTextVr;
+    show ValueFamily, familyOf, isBytesVr, isCharsetVr, isTextVr, numberSize;
 
 // Per-VR conversion between value bytes and the Dart values of the data
 // architecture §3.4 contract. Each VR decodes to one canonical form:
@@ -41,8 +42,16 @@ Object decodeValue(
   if (isTextVr(vr)) {
     return decodeTextValues(tag, vr, bytes, specificCharacterSet);
   }
-  return decodeNumbers(
-      tag, vr, bytes, littleEndian ? Endian.little : Endian.big);
+  final numbers =
+      decodeNumbers(tag, vr, bytes, littleEndian ? Endian.little : Endian.big);
+  // A LUT Descriptor's first value is unsigned whatever the VR (PS3.3
+  // C.11.1.1.1): read as SS, a negative one is raised by 65536, as pydicom.
+  if (vr == Vr.SS && lutDescriptorTags.contains(tag.value)) {
+    final values = List<int>.of(numbers as List<int>);
+    if (values.isNotEmpty && values.first < 0) values[0] += 65536;
+    return List<int>.unmodifiable(values);
+  }
+  return numbers;
 }
 
 /// Encodes [value] (a canonical form, see the top of this file) for element

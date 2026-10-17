@@ -180,6 +180,10 @@ final class _Writer {
     final sameEndian = source.littleEndian == ts.littleEndian;
     final sameEncoding = sameEndian && source.explicitVr == ts.explicitVr;
     final vr = element.vr;
+    // A number value with a partial value at the end (reported when read)
+    // is re-encoded without it.
+    final size = numberSize(vr);
+    if (size != null && raw.length % size != 0) return false;
     return (sameEndian || !_byteOrdered.contains(vr)) &&
         (!isCharsetVr(vr) || _sameTerms(raw.specificCharacterSet, charset)) &&
         (!raw.undefinedLength || sameEncoding);

@@ -15,12 +15,14 @@ import '../vr/vr.dart';
 final class DataElement {
   /// An element built in memory, holding [value] in its canonical form
   /// (see `value_codec.dart`).
-  DataElement(this.tag, this.vr, Object value)
-      : _value = value,
+  DataElement(this.tag, Vr vr, Object value)
+      : _vr = vr,
+        _value = value,
         _raw = null;
 
-  DataElement._read(this.tag, this.vr, RawValue raw, Object? decoded)
-      : _raw = raw,
+  DataElement._read(this.tag, Vr vr, RawValue raw, Object? decoded)
+      : _vr = vr,
+        _raw = raw,
         _value = decoded;
 
   /// The attribute tag.
@@ -28,7 +30,8 @@ final class DataElement {
 
   /// The value representation: as read for Explicit VR, from the dictionary
   /// for Implicit VR, `UN` when neither knows it.
-  final Vr vr;
+  Vr get vr => _vr;
+  Vr _vr;
 
   final RawValue? _raw;
   Object? _value;
@@ -121,6 +124,14 @@ final class RawValue {
 /// the parser builds itself.
 DataElement readElement(Tag tag, Vr vr, RawValue raw, {Object? decoded}) =>
     DataElement._read(tag, vr, raw, decoded);
+
+/// Gives an element just read its resolved [vr] (an ambiguous dictionary
+/// VR, settled once its whole dataset is read), before anyone has its value.
+void retypeElement(DataElement element, Vr vr) {
+  element
+    .._vr = vr
+    .._value = null;
+}
 
 /// The raw encoding of [element], or `null` if it was built in memory.
 RawValue? rawValueOf(DataElement element) => element._raw;

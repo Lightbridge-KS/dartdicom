@@ -186,9 +186,8 @@ void main() {
           [const Tag.of(0x0010, 0x0010)]);
     });
 
-    test('a length that is not a multiple of the size is a parse error', () {
-      expect(
-          () => _decode(Vr.US, [1, 2, 3]), throwsA(isA<DicomParseException>()));
+    test('a partial value at the end is dropped (C-10)', () {
+      expect(_decode(Vr.US, [1, 2, 3]), [0x0201]);
     });
 
     test('an out-of-range value is a write error', () {

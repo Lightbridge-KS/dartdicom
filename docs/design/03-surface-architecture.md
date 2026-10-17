@@ -106,7 +106,7 @@ flowchart TD
 | `ds.set(One<T>, T)` / `ds.setAll(Many<T>, List<T>)` / `ds.setEmpty(tag)` / `ds.remove(tag)` | modify (S1) | C-06 |
 | `DicomTags.*` · `TransferSyntaxes.*` · `SopClasses.*` | generated constants | C-03, C-16 |
 | `ReadOptions` · `WriteOptions` | per-call options | C-09, C-11 |
-| `file.report` (`ReadReport`) | the repairs lenient reading made (C-10) | C-10 |
+| `file.report` / `ds.report` (`ReadReport`) | the repairs lenient reading made (C-10); `ds.report` for `Dataset.fromBytes` *(amended)* | C-10 |
 | `ds.dump()` | readable tree; values masked unless opted in | C-21 |
 | `ds.pixels.frame(i)` → `PixelArray` | decode one frame | X-01–X-03 |
 | `.toDisplay(window)` → `DisplayBuffer` · `ds.voiWindow()` | apply LUTs, get 8-bit pixels: `gray`, or `toRgba()` (S8) | X-04, X-07 |

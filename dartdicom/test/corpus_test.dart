@@ -15,6 +15,7 @@ import 'dart:io';
 import 'package:dartdicom/dartdicom.dart';
 import 'package:test/test.dart';
 
+import 'support/f41.dart';
 import 'support/golden.dart';
 
 const _corpus = 'pydicom-data';
@@ -56,11 +57,13 @@ void main() {
           jsonDecode(golden.readAsStringSync()) as Map<String, Object?>;
       final path = record['file']! as String;
       final bytes = File('$corpusRoot/$path').readAsBytesSync();
+      // Read as pydicom read it: with force when it needed force.
+      final options = ReadOptions(force: record['force'] == true);
       if (record.containsKey('error')) {
         // pydicom can't read it at all; we must not crash on it.
         pydicomUnreadable++;
         try {
-          DicomFile.fromBytes(bytes);
+          DicomFile.fromBytes(bytes, options: options);
         } on DicomParseException {
           // A clear refusal is fine.
         }
@@ -68,7 +71,7 @@ void main() {
       }
       final DicomFile file;
       try {
-        file = DicomFile.fromBytes(bytes);
+        file = DicomFile.fromBytes(bytes, options: options);
       } on DicomParseException catch (e) {
         failures[path] = 'read: ${e.message}';
         continue;
@@ -83,7 +86,7 @@ void main() {
             '${compare.mismatches.length > 1 ? ' (+${compare.mismatches.length - 1} more)' : ''}';
         continue;
       }
-      final roundTrip = _roundTrip(file, bytes);
+      final roundTrip = checkF41(file, bytes);
       if (roundTrip != null) failures[path] = roundTrip;
     }
 
@@ -105,33 +108,6 @@ void main() {
     expect(fixed, isEmpty,
         reason: 'these now pass; remove them from test/corpus_expected.txt');
   }, skip: present || required ? false : 'no corpus in the cache');
-}
-
-/// I-10 under F41's rule: byte-identical when the read was clean, the
-/// transfer syntax is written back, and the meta agrees with the dataset.
-/// Returns why it failed, or null.
-String? _roundTrip(DicomFile file, List<int> bytes) {
-  if (file.meta.transferSyntaxUid == TransferSyntaxes.explicitVrBigEndian) {
-    return null; // read-only (C-08): F41 exempts it
-  }
-  final metaUid = file.meta.mediaStorageSopInstanceUid?.value;
-  final datasetUid = file.dataset.get(DicomTags.sopInstanceUid);
-  if (metaUid != null && datasetUid != null && metaUid != datasetUid) {
-    return null; // I-17 refuses it by design
-  }
-  final List<int> written;
-  try {
-    written = file.toBytes();
-  } on DicomWriteException catch (e) {
-    return 'I-10 write: ${e.message}';
-  }
-  if (written.length != bytes.length) {
-    return 'I-10: ${written.length} bytes written, ${bytes.length} read';
-  }
-  for (var i = 0; i < bytes.length; i++) {
-    if (written[i] != bytes[i]) return 'I-10: first difference at byte $i';
-  }
-  return null;
 }
 
 /// `path  # reason` lines; blank lines and lines starting with `#` skipped.

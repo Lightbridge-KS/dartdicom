@@ -1,36 +1,17 @@
 // I-10 under F41: reading then writing an untouched file in the same
 // transfer syntax gives byte-identical output; for Deflated, the same header
-// and the same inflated body. VM only: reads the fixtures.
+// and the same inflated body; a repaired file reaches a fixpoint. VM only:
+// reads the fixtures.
 @TestOn('vm')
 library;
 
 import 'dart:io';
 
-import 'dart:typed_data';
-
 import 'package:dartdicom/dartdicom.dart';
-import 'package:dartdicom/io.dart';
 import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
 
-const _zlib = WriteOptions(deflateCodec: ZLibDeflateCodec());
-
-/// I-10's comparison under F41: identical bytes, or for Deflated, an
-/// identical header and inflated body.
-void _expectSame(DicomFile file, Uint8List written, Uint8List read) {
-  if (file.meta.transferSyntaxUid !=
-      TransferSyntaxes.deflatedExplicitVrLittleEndian) {
-    expect(written, read);
-    return;
-  }
-  final int groupLength =
-      file.meta.dataset.require(DicomTags.fileMetaInformationGroupLength);
-  final metaEnd = 144 + groupLength;
-  expect(written.sublist(0, metaEnd), read.sublist(0, metaEnd));
-  const zlib = ZLibDeflateCodec();
-  expect(zlib.inflate(Uint8List.sublistView(written, metaEnd)),
-      zlib.inflate(Uint8List.sublistView(read, metaEnd)));
-}
+import 'support/f41.dart';
 
 void main() {
   final fixtures = [
@@ -46,12 +27,7 @@ void main() {
         .skip(fixture.uri.pathSegments.length - 2)
         .join('/');
     final bytes = fixture.readAsBytesSync();
-    final DicomFile file;
-    try {
-      file = DicomFile.fromBytes(bytes);
-    } on DicomParseException {
-      continue; // Big Endian: not readable yet (M2 step 4b).
-    }
+    final file = DicomFile.fromBytes(bytes);
 
     // A few public files carry file meta whose SOP UIDs contradict the
     // dataset's. Reading is lenient; writing is strict, so I-17 refuses them
@@ -80,8 +56,8 @@ void main() {
         expect(
             le.meta.transferSyntaxUid, TransferSyntaxes.explicitVrLittleEndian);
         // Everything decodes the same; OW Pixel Data words swap (I-18).
-        expect(_flatten(le.dataset, skip: DicomTags.pixelData),
-            _flatten(file.dataset, skip: DicomTags.pixelData));
+        expect(flatten(le.dataset, skip: {DicomTags.pixelData}),
+            flatten(file.dataset, skip: {DicomTags.pixelData}));
         final be = file.dataset.require(DicomTags.pixelData);
         final int bitsAllocated = file.dataset.require(DicomTags.bitsAllocated);
         expect(le.dataset.require(DicomTags.pixelData),
@@ -90,8 +66,8 @@ void main() {
       continue;
     }
 
-    test('$name round-trips byte for byte', () {
-      _expectSame(file, file.toBytes(options: _zlib), bytes);
+    test('$name round-trips by F41', () {
+      expect(checkF41(file, bytes), isNull);
     });
 
     test('$name round-trips after every value was read', () {
@@ -105,20 +81,7 @@ void main() {
 
       touch(again.meta.dataset);
       touch(again.dataset);
-      _expectSame(again, again.toBytes(options: _zlib), bytes);
+      expect(checkF41(again, bytes), isNull);
     });
   }
 }
-
-/// Every element, recursively, as [tag, VR, value] for comparison.
-List<Object> _flatten(Dataset ds, {Tag? skip}) => [
-      for (final e in ds.elements.where((e) => e.tag != skip))
-        [
-          e.tag.value,
-          e.vr.code,
-          switch (e.value) {
-            final Sequence s => [for (final item in s) _flatten(item)],
-            final Object v => v,
-          },
-        ],
-    ];

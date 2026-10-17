@@ -18,6 +18,7 @@ import '../vr/vr.dart';
 import '../write/writer.dart';
 import 'element.dart';
 import 'private_block.dart';
+import 'read_report.dart';
 import 'sequence.dart';
 
 /// A DICOM dataset: data elements kept in ascending tag order (C-06).
@@ -35,6 +36,7 @@ final class Dataset {
   /// An empty dataset, to fill with [set] (e.g. a C-FIND query).
   Dataset()
       : transferSyntax = null,
+        report = ReadReport.clean(),
         _partial = false,
         _undefinedLength = false;
 
@@ -51,8 +53,9 @@ final class Dataset {
           BytesSource(bytes), _transferSyntax(transferSyntax), options);
 
   Dataset._read(Iterable<DataElement> elements, this.transferSyntax,
-      {bool partial = false, bool undefinedLength = false})
-      : _partial = partial,
+      {bool partial = false, bool undefinedLength = false, ReadReport? report})
+      : report = report ?? ReadReport.clean(),
+        _partial = partial,
         _undefinedLength = undefinedLength {
     for (final e in elements) {
       _elements[e.tag.value] = e;
@@ -63,6 +66,11 @@ final class Dataset {
   /// built in memory. Binary values not yet re-encoded (such as Pixel
   /// Data bytes) are in its byte order.
   final Uid? transferSyntax;
+
+  /// What reading repaired, sequence items included (PRD C-10); clean for
+  /// a dataset built in memory, and for an item, whose repairs are in its
+  /// top-level dataset's report.
+  final ReadReport report;
 
   final _elements = SplayTreeMap<int, DataElement>();
 
@@ -335,11 +343,13 @@ TransferSyntax _transferSyntax(Uid uid) =>
 
 /// A dataset as the parser read it: not modified. [partial] marks a read
 /// that stopped early; [undefinedLength] an SQ item read with an undefined
-/// length.
+/// length; [report] what reading repaired.
 Dataset readDataset(Iterable<DataElement> elements, Uid? transferSyntax,
-        {bool partial = false, bool undefinedLength = false}) =>
+        {bool partial = false,
+        bool undefinedLength = false,
+        ReadReport? report}) =>
     Dataset._read(elements, transferSyntax,
-        partial: partial, undefinedLength: undefinedLength);
+        partial: partial, undefinedLength: undefinedLength, report: report);
 
 /// Whether [ds] was read only in part, so writing it would drop data.
 bool isPartial(Dataset ds) => ds._partial;

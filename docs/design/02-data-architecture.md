@@ -119,7 +119,7 @@ The PACS owns this hierarchy. The library meets it in only two places:
 | Element (raw) | tag (u32), VR (nullable for implicit VR), length (u32; `0xFFFFFFFF` means undefined), either a value slice or {offset, length} if deferred | Never decoded until accessed (C-05) |
 | Element (data) | tag, VR, decoded value (§3.4) | Cached once converted |
 | File meta (group 0002) | version (0002,0001), media storage SOP class and instance (0002,0002/0003), transfer syntax (0002,0010), implementation class UID and version (0002,0012/0013), source AE (0002,0016) | Always Explicit VR LE. The writer derives it (§5) |
-| `ReadReport` | a list of {kind, tag, offset, detail} | Records every lenient-read repair (C-10). **Holds no element values** |
+| `ReadReport` | a list of {kind, tag, offset}; each kind carries a fixed description *(amended)* | Records every lenient-read repair (C-10). **Holds no element values** |
 | `ReceivedInstance` | SOP class UID, SOP instance UID, **negotiated transfer syntax**, dataset bytes, source AE title (the peer that sent it; (0002,0016)), file meta, presentation context ID *(amended)* | Handed to the sink (N-11, blueprint F10) |
 | `RetrieveProgress` | remaining, completed, failed, warning | From command elements (0000,1020)–(0000,1023) of each C-GET or C-MOVE response (N-12) |
 | `DimseStatus` | code (u16) → success, pending, warning, failure or cancel | Sealed; no default value means success (D3) |

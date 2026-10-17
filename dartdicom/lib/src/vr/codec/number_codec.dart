@@ -3,22 +3,19 @@ import 'dart:typed_data';
 import '../../errors.dart';
 import '../../tag/tag.dart';
 import '../vr.dart';
+import 'vr_family.dart';
 
 // The binary number family: US SS UL SL FL FD SV UV, and AT (a pair of
 // 16-bit numbers). Fixed-size values, so always of even length.
 
-/// Decodes the number value [bytes] in [endian] order.
+/// Decodes the number value [bytes] in [endian] order. A length that isn't
+/// a multiple of the size (reported when read, C-10) gives the whole values
+/// and drops the rest.
 List<Object> decodeNumbers(Tag tag, Vr vr, Uint8List bytes, Endian endian) {
   final size = _sizeOf(vr);
-  if (bytes.length % size != 0) {
-    throw DicomParseException(
-        'a ${vr.code} value must be a multiple of $size bytes long, '
-        'but is ${bytes.length}',
-        tag: tag);
-  }
   final data = ByteData.sublistView(bytes);
   List<T> numbers<T>(T Function(int offset) read) => List<T>.unmodifiable(
-      [for (var i = 0; i < bytes.length; i += size) read(i)]);
+      [for (var i = 0; i + size <= bytes.length; i += size) read(i)]);
 
   return switch (vr) {
     // The type arguments are the I-19 contract: without them, T is inferred
@@ -72,12 +69,8 @@ Uint8List encodeNumbers(Tag tag, Vr vr, List<Object> values, Endian endian) {
 }
 
 /// The size in bytes of one value of a binary number VR (US … SV, AT).
-int _sizeOf(Vr vr) => switch (vr) {
-      Vr.US || Vr.SS => 2,
-      Vr.UL || Vr.SL || Vr.FL || Vr.AT => 4,
-      Vr.FD || Vr.UV || Vr.SV => 8,
-      _ => throw StateError('no value codec for ${vr.code}'),
-    };
+int _sizeOf(Vr vr) =>
+    numberSize(vr) ?? (throw StateError('no value codec for ${vr.code}'));
 
 int _inRange(Tag tag, Vr vr, int v, int min, int max) {
   if (v < min || v > max) {

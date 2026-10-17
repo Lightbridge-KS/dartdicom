@@ -38,6 +38,15 @@ bool isBytesVr(Vr vr) => switch (vr) {
       _ => false,
     };
 
+/// The size in bytes of one value of a binary-number VR, or `null` for
+/// any other VR.
+int? numberSize(Vr vr) => switch (vr) {
+      Vr.US || Vr.SS => 2,
+      Vr.UL || Vr.SL || Vr.FL || Vr.AT => 4,
+      Vr.FD || Vr.UV || Vr.SV => 8,
+      _ => null,
+    };
+
 /// The Dart type of one value of a VR (data architecture §3.4): the family
 /// the untyped getters and `setRaw` dispatch on.
 enum ValueFamily { string, int, double, bigInt, tag, bytes, sequence }

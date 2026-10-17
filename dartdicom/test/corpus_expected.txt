@@ -1,16 +1,3 @@
 # pydicom-data files that still fail corpus_test.dart, each with the reason
 # and the M2 step that fixes it. The test fails if an unlisted file fails or a
 # listed one passes, so this list only shrinks (docs/progress/overview-v0.md).
-
-# Step 5: lenient reading (C-10).
-data_store/data/693_J2KR.dcm  # stale group length: dropped on write; to report as a repair
-data_store/data/693_UNCI.dcm  # stale group lengths (left from the compressed file): dropped on write; to report
-data_store/data/693_UNCR.dcm  # stale group length: dropped on write; to report as a repair
-data_store/data/JLSL_RGB_ILV0.dcm  # force: meta without a preamble
-data_store/data/JLSL_RGB_ILV1.dcm  # force: meta without a preamble
-data_store/data/JLSL_RGB_ILV2.dcm  # force: meta without a preamble
-data_store/data/JLSN_RGB_ILV0.dcm  # force: meta without a preamble
-data_store/data/OT-PAL-8-face.dcm  # force: a raw Implicit VR dataset
-data_store/data/bad_sequence.dcm  # UN with an undefined length is an SQ
-data_store/data/emri_small_jpeg_2k_lossless_too_short.dcm  # truncated: partial dataset
-data_store/data/explicit_VR-UN.dcm  # UN with a known VR takes the dictionary's

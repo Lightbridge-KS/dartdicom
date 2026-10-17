@@ -8,7 +8,7 @@ import 'package:dartdicom/dartdicom.dart';
 
 /// One comparison's findings: mismatches, and the named tolerances that
 /// excused a difference. A tolerance is a documented pydicom quirk, never a
-/// file name, and exists only while the corpus needs it (none yet).
+/// file name, and exists only while the corpus needs it.
 final class GoldenCompare {
   final mismatches = <String>[];
   final tolerated = <String, int>{};
@@ -16,8 +16,21 @@ final class GoldenCompare {
   /// Compares [file] with [record], a golden JSON record.
   void file(Map<String, Object?> record, DicomFile file) {
     elements(record['meta']! as List<Object?>, file.meta.dataset, 'meta');
-    elements(record['dataset']! as List<Object?>, file.dataset, '');
+    final dataset = record['dataset']! as List<Object?>;
+    // pydicom 3.0.2's read_dataset builds the top level in a dict
+    // comprehension, so an EOFError inside an undefined-length value loses
+    // every element read before it. We keep them, and report the drop.
+    if (dataset.isEmpty &&
+        !file.dataset.isEmpty &&
+        file.report.repairs.any((r) => r.kind == RepairKind.valueDropped)) {
+      _tolerate('pydicom empties a dataset that ends in an undefined-length '
+          'value');
+      return;
+    }
+    elements(dataset, file.dataset, '');
   }
+
+  void _tolerate(String rule) => tolerated[rule] = (tolerated[rule] ?? 0) + 1;
 
   void elements(List<Object?> golden, Dataset ds, String where) {
     final theirs = {

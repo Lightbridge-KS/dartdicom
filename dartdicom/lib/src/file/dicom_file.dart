@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../dataset/dataset.dart';
+import '../dataset/read_report.dart';
 import '../dictionary/dictionary.dart';
 import '../errors.dart';
 import '../read/parser.dart';
@@ -48,7 +49,8 @@ final class DicomFile {
   /// stopped if the data can't be read.
   factory DicomFile.fromSource(ByteSource source,
       {ReadOptions options = const ReadOptions()}) {
-    final (:meta, :dataset, :preamble) = parsePart10(source, options);
+    final (:meta, :dataset, :preamble, report: _) =
+        parsePart10(source, options);
     return DicomFile(FileMetaInformation(meta), dataset, preamble: preamble);
   }
 
@@ -61,6 +63,10 @@ final class DicomFile {
 
   /// The dataset: everything after the file meta.
   final Dataset dataset;
+
+  /// What reading the file repaired, the meta included (PRD C-10): the
+  /// dataset's report. Clean for a file built in memory.
+  ReadReport get report => dataset.report;
 
   /// Encodes the file as Part 10 bytes, in the transfer syntax it was read
   /// in. Untouched elements are copied byte for byte (I-10).
@@ -78,12 +84,15 @@ final class DicomFile {
           (throw ArgumentError.value(requested.value, 'transferSyntax',
               'is not a registered transfer syntax'));
     } else {
-      ts = (declared == null ? null : TransferSyntax.of(declared)) ??
+      // With no syntax in the meta (a forced read), the one detected.
+      final read = declared ?? dataset.transferSyntax;
+      ts = (read == null ? null : TransferSyntax.of(read)) ??
           TransferSyntax.explicitVrLittleEndian;
     }
     final (:bytes, :verbatim) =
         encodeDatasetVerbatim(dataset, ts, deflateCodec: options.deflateCodec);
-    final changed = !verbatim || isModified(meta.dataset);
+    // A repaired file is written as dartdicom made it, not as read.
+    final changed = !verbatim || isModified(meta.dataset) || !report.isClean;
     return (BytesBuilder(copy: false)
           ..add(_derivedMeta(ts, changed: changed)
               .toHeaderBytes(preamble: preamble))
