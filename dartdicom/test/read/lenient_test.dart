@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:dartdicom/dartdicom.dart';
 import 'package:test/test.dart';
 
+import '../support/f41.dart';
+
 const _explicit = '1.2.840.10008.1.2.1';
 const _implicit = '1.2.840.10008.1.2';
 const _sopClass = '1.2.840.10008.5.1.4.1.1.7';
@@ -90,13 +92,11 @@ DicomFile _read(Uint8List bytes, {bool force = false}) =>
 List<RepairKind> _kinds(DicomFile file) =>
     [for (final r in file.report.repairs) r.kind];
 
-/// F41 for a repaired file: the written file reads clean, and writing it
-/// again gives the same bytes.
+/// F41's fixpoint for a repaired file ([expectFixpoint]). These cases
+/// repair no content either, so the written file also reads clean.
 DicomFile _expectFixpoint(DicomFile file) {
-  final written = file.toBytes();
-  final again = DicomFile.fromBytes(written);
+  final again = expectFixpoint(file);
   expect(again.report.isClean, isTrue, reason: '${again.report}');
-  expect(again.toBytes(), written);
   return again;
 }
 

@@ -17,10 +17,8 @@ import 'package:dartdicom/src/dictionary/dictionary.dart' show describeTag;
 import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
 
+import 'support/f41.dart' show contentRepairs;
 import 'support/golden.dart';
-
-/// Repairs of the content, which writing keeps (F41).
-const _contentRepairs = {RepairKind.multipleValues};
 
 void main() {
   final dir = Platform.environment['DARTDICOM_WRITTEN'];
@@ -59,7 +57,7 @@ List<String> _check(Map<String, Object?> entry, _Dcmdump? dcmdump) {
   final file = DicomFile.fromBytes(File(written).readAsBytesSync());
   final left = [
     for (final r in file.report.repairs)
-      if (!_contentRepairs.contains(r.kind)) r,
+      if (!contentRepairs.contains(r.kind)) r,
   ];
   if (left.isNotEmpty) problems.add('reads with $left');
 

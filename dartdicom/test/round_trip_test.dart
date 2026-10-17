@@ -8,10 +8,13 @@ library;
 import 'dart:io';
 
 import 'package:dartdicom/dartdicom.dart';
+import 'package:dartdicom/io.dart';
 import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
 
 import 'support/f41.dart';
+
+const _zlib = ZLibDeflateCodec();
 
 void main() {
   final fixtures = [
@@ -32,9 +35,7 @@ void main() {
     // A few public files carry file meta whose SOP UIDs contradict the
     // dataset's. Reading is lenient; writing is strict, so I-17 refuses them
     // rather than copy the contradiction (data §5).
-    final metaUid = file.meta.mediaStorageSopInstanceUid?.value;
-    final datasetUid = file.dataset.get(DicomTags.sopInstanceUid);
-    if (metaUid != null && datasetUid != null && metaUid != datasetUid) {
+    if (contradictsSopUids(file)) {
       test('$name has contradicting SOP UIDs, so the write is refused', () {
         expect(file.toBytes, throwsA(isA<DicomWriteException>()));
       });
@@ -67,7 +68,7 @@ void main() {
     }
 
     test('$name round-trips by F41', () {
-      expect(checkF41(file, bytes), isNull);
+      expect(checkF41(file, bytes, deflateCodec: _zlib), isNull);
     });
 
     test('$name round-trips after every value was read', () {
@@ -81,7 +82,7 @@ void main() {
 
       touch(again.meta.dataset);
       touch(again.dataset);
-      expect(checkF41(again, bytes), isNull);
+      expect(checkF41(again, bytes, deflateCodec: _zlib), isNull);
     });
   }
 }

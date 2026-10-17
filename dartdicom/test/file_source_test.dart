@@ -11,6 +11,8 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
 
+import 'support/f41.dart' show flatten;
+
 /// A CT fixture with 8 MiB of Pixel Data, written to [dir].
 File _bigFile(Directory dir) {
   final file = DicomFile.fromBytes(
@@ -101,8 +103,7 @@ void main() {
             continue; // not readable yet (Deflated, Big Endian)
           }
           final async = await f.readAsDicom(options: options);
-          expect(_flatten(async.dataset), _flatten(sync.dataset),
-              reason: f.path);
+          expect(flatten(async.dataset), flatten(sync.dataset), reason: f.path);
         }
       });
     }
@@ -174,16 +175,3 @@ void main() {
             .having((e) => e.message, 'message', contains('nest'))));
   });
 }
-
-/// Every element, recursively, as (tag, VR, value) for comparison.
-List<Object> _flatten(Dataset ds) => [
-      for (final e in ds.elements)
-        [
-          e.tag.value,
-          e.vr.code,
-          switch (e.value) {
-            final Sequence s => [for (final item in s) _flatten(item)],
-            final Object v => v,
-          },
-        ],
-    ];

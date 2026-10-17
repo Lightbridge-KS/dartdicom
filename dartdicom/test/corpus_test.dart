@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dartdicom/dartdicom.dart';
+import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
 
 import 'support/f41.dart';
@@ -86,7 +87,8 @@ void main() {
             '${compare.mismatches.length > 1 ? ' (+${compare.mismatches.length - 1} more)' : ''}';
         continue;
       }
-      final roundTrip = checkF41(file, bytes);
+      final roundTrip =
+          checkF41(file, bytes, deflateCodec: const ZLibDeflateCodec());
       if (roundTrip != null) failures[path] = roundTrip;
     }
 

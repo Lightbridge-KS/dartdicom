@@ -1,15 +1,26 @@
-// I-10 under blueprint F41, shared by the fixture and corpus round trips.
+// I-10 under blueprint F41, shared by the fixture, corpus and lenient-read
+// tests. Platform-free, so web tests can use it: a caller that writes
+// Deflated passes the codec to compress with.
 import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
-import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
 
-const _zlib = ZLibDeflateCodec();
+/// Inflates both sides when Deflated bytes are compared. Inflating is exact,
+/// so any codec gives the same body.
+const _inflate = PureDartInflate();
 
 /// Repairs that describe the content rather than its encoding, so writing
 /// keeps them: the written file still reports them.
-const _contentRepairs = {RepairKind.multipleValues};
+const contentRepairs = {RepairKind.multipleValues};
+
+/// Whether [file]'s meta and dataset contradict each other on the SOP
+/// Instance UID, so that writing it is refused (I-17).
+bool contradictsSopUids(DicomFile file) {
+  final metaUid = file.meta.mediaStorageSopInstanceUid?.value;
+  final datasetUid = file.dataset.get(DicomTags.sopInstanceUid);
+  return metaUid != null && datasetUid != null && metaUid != datasetUid;
+}
 
 /// Checks [file], read from [bytes], against F41's rule; returns why it
 /// failed, or null.
@@ -24,12 +35,15 @@ const _contentRepairs = {RepairKind.multipleValues};
 /// - A repaired read: a fixpoint. The written file re-reads with no repair
 ///   of the encoding, to the same elements (less the stale group lengths
 ///   dropped), and writing that again gives the same bytes.
-String? checkF41(DicomFile file, Uint8List bytes) {
-  WriteOptions options() => const WriteOptions(deflateCodec: _zlib);
+///
+/// Writing Deflated needs [deflateCodec] (zlib, on native platforms).
+String? checkF41(DicomFile file, Uint8List bytes,
+    {DeflateCodec? deflateCodec}) {
+  final options = WriteOptions(deflateCodec: deflateCodec);
   if (file.dataset.report.repairs.any((r) =>
       r.kind == RepairKind.truncated || r.kind == RepairKind.valueDropped)) {
     try {
-      file.toBytes(options: options());
+      file.toBytes(options: options);
       return 'F41: a partial read was written';
     } on DicomWriteException {
       return null;
@@ -38,18 +52,14 @@ String? checkF41(DicomFile file, Uint8List bytes) {
   if (file.meta.transferSyntaxUid == TransferSyntaxes.explicitVrBigEndian) {
     return null;
   }
-  final metaUid = file.meta.mediaStorageSopInstanceUid?.value;
-  final datasetUid = file.dataset.get(DicomTags.sopInstanceUid);
-  if (metaUid != null && datasetUid != null && metaUid != datasetUid) {
-    return null;
-  }
+  if (contradictsSopUids(file)) return null;
   bool lacks(One<String> metaTag, One<String> datasetTag) =>
       file.meta.dataset.get(metaTag) == null &&
       file.dataset.get(datasetTag) == null;
   if (lacks(DicomTags.mediaStorageSopClassUid, DicomTags.sopClassUid) ||
       lacks(DicomTags.mediaStorageSopInstanceUid, DicomTags.sopInstanceUid)) {
     try {
-      file.toBytes(options: options());
+      file.toBytes(options: options);
       return 'F41: a file with no SOP UIDs was written';
     } on DicomWriteException {
       return null;
@@ -57,21 +67,44 @@ String? checkF41(DicomFile file, Uint8List bytes) {
   }
   final Uint8List written;
   try {
-    written = file.toBytes(options: options());
+    written = file.toBytes(options: options);
   } on DicomWriteException catch (e) {
     return 'I-10 write: ${e.message}';
   }
   if (file.report.isClean) return sameBytes(file, written, bytes);
+  return _fixpoint(file, written, options).problem;
+}
 
+/// Expects [file], a repaired read, to reach F41's fixpoint, and returns
+/// the written file read back, for further checks.
+DicomFile expectFixpoint(DicomFile file, {DeflateCodec? deflateCodec}) {
+  final options = WriteOptions(deflateCodec: deflateCodec);
+  final (:reread, :problem) =
+      _fixpoint(file, file.toBytes(options: options), options);
+  expect(problem, isNull);
+  return reread!;
+}
+
+/// F41 for a repaired [file] that was [written]: the written file re-reads
+/// with no repair of the encoding, to the same elements (less the stale
+/// group lengths dropped), and writing that again gives the same bytes.
+/// Returns the re-read file, and why it failed.
+({DicomFile? reread, String? problem}) _fixpoint(
+    DicomFile file, Uint8List written, WriteOptions options) {
   final DicomFile reread;
   try {
     reread = DicomFile.fromBytes(written);
   } on DicomParseException catch (e) {
-    return 'F41: the written file does not read: ${e.message}';
+    return (
+      reread: null,
+      problem: 'F41: the written file does not read: ${e.message}'
+    );
   }
   final left =
-      reread.report.repairs.where((r) => !_contentRepairs.contains(r.kind));
-  if (left.isNotEmpty) return 'F41: the written file reads with $left';
+      reread.report.repairs.where((r) => !contentRepairs.contains(r.kind));
+  if (left.isNotEmpty) {
+    return (reread: reread, problem: 'F41: the written file reads with $left');
+  }
   final stale = {
     for (final r in file.report.repairs)
       if (r.kind == RepairKind.staleGroupLength) r.tag!,
@@ -83,11 +116,17 @@ String? checkF41(DicomFile file, Uint8List bytes) {
   if (!matcher.matches(after, state)) {
     final why =
         matcher.describeMismatch(after, StringDescription(), state, false);
-    return 'F41: the written file reads differently: $why';
+    return (
+      reread: reread,
+      problem: 'F41: the written file reads differently: $why'
+    );
   }
-  final again = reread.toBytes(options: options());
+  final again = reread.toBytes(options: options);
   final same = sameBytes(reread, again, written);
-  return same == null ? null : 'F41: not a fixpoint: $same';
+  return (
+    reread: reread,
+    problem: same == null ? null : 'F41: not a fixpoint: $same'
+  );
 }
 
 /// I-10's comparison: identical bytes, or for Deflated, an identical header
@@ -100,8 +139,9 @@ String? sameBytes(DicomFile file, Uint8List written, Uint8List read) {
     final metaEnd = 144 + groupLength;
     return _firstDifference(
             written.sublist(0, metaEnd), read.sublist(0, metaEnd)) ??
-        _firstDifference(_zlib.inflate(Uint8List.sublistView(written, metaEnd)),
-            _zlib.inflate(Uint8List.sublistView(read, metaEnd)));
+        _firstDifference(
+            _inflate.inflate(Uint8List.sublistView(written, metaEnd)),
+            _inflate.inflate(Uint8List.sublistView(read, metaEnd)));
   }
   return _firstDifference(written, read);
 }
