@@ -130,6 +130,7 @@ These run in order of demand:
 ## Open questions
 
 - **Before 1.0:** does PN become `PersonName`, and do DA/TM/DT become date types (C-15)? Typed tags fix each VR's Dart type in every generated constant, so this is free only before 1.0 (data §8).
+- **M2:** when an existing file is rewritten, whose implementation identity goes into the meta (C-07)? Today `DicomFile.toBytes` keeps (0002,0012) and (0002,0013) as read and fills in dartdicom's only where one is missing. PS3.10 §7.1 says (0002,0012) identifies the implementation that wrote the file. Two side effects: (a) the two tags are filled independently, so a meta with another writer's class UID and no version name comes out as that UID plus `DARTDICOM 0.1.0`; (b) `contains` counts an empty element as present, so an empty (0002,0012) or (0002,0001), both Type 1, is written empty. pydicom 3.x keeps an existing value too, but fills in an empty class UID or version (`validate_file_meta`).
 - **M3:** which PACS products must the first consumer support, and do they support C-GET? The answer settles whether the default retrieve path is C-GET or C-MOVE. The tracer uses C-GET, which the test Orthanc supports (confirmed 2026-10-17).
 
 **Answered 2026-10-17** (recorded in blueprint §3):
