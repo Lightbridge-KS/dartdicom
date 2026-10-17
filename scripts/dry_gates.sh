@@ -15,7 +15,10 @@ step "analyze";  dart analyze --fatal-infos
 step "deps";     scripts/check_deps.sh
 step "test vm";  scripts/test_all.sh
 step "test $web"; scripts/test_all.sh -p "$web"
-step "wasm";     out="$(mktemp -d)"; dart compile wasm dartdicom/example/dartdicom_example.dart -o "$out/core.wasm" >/dev/null && echo "core compiles to Wasm"
+step "wasm";     out="$(mktemp -d)"
+for pkg in dartdicom dartdicom_pixel; do
+  dart compile wasm "$pkg/example/${pkg}_example.dart" -o "$out/$pkg.wasm" >/dev/null && echo "$pkg compiles to Wasm"
+done
 step "fixtures (python)"
 if command -v uv >/dev/null; then
   scripts/check_fixtures.sh
