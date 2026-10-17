@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import '../dataset/dataset.dart';
 import '../dataset/element.dart';
 import '../dataset/sequence.dart';
+import '../dictionary/dictionary.dart';
 import '../errors.dart';
 import '../read/inflate.dart';
 import '../tag/tags.g.dart';
@@ -144,8 +145,14 @@ final class _Writer {
     if (element.vr == Vr.SQ) {
       // A sequence keeps no bytes of its own: its items are written, each
       // element copied or re-encoded on its own, in the length forms read.
+      // In Implicit VR, a sequence the dictionary doesn't know as one (a
+      // private one) gets an undefined length, the only way a reader with
+      // no private dictionary can tell it is a sequence (PS3.5 §7.5.1).
       if (raw == null) verbatim = false; // a sequence set in memory
-      final undefined = raw?.undefinedLength ?? false;
+      final undefined = (raw?.undefinedLength ?? false) ||
+          (!ts.explicitVr &&
+              !(Dictionary.standard.entry(element.tag)?.vrs.contains(Vr.SQ) ??
+                  false));
       final items = _encodeItems(element.value as Sequence, charset);
       _writeHeader(out, element, items.length, undefined: undefined);
       out.add(items);

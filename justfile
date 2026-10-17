@@ -118,3 +118,7 @@ fixtures-list:
 corpus:
     cd fixtures && uv run --locked fixtures corpus fetch
     cd fixtures && uv run --locked fixtures golden --corpus
+
+# The written-file gate: pydicom and DCMTK read what dartdicom writes from each fixture (`just written --corpus` for the cached corpus).
+written *args:
+    scripts/written_gate.sh {{args}}

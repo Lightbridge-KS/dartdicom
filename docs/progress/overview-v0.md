@@ -108,12 +108,16 @@ Each step ends with the dry and floor gates green, and `just live` after a read 
   - Stale group lengths dropped.
   - Writing BE is refused with the fix named.
 - [x] **4c. Implementation identity and I-17** (`218bb8d`). The six `SC_rgb*` corpus files now round-trip byte for byte; the ratchet is down to 11, all scheduled for step 5. "Changed" means not verbatim, or the meta was edited.
-- [x] **5. Lenient reading and `ReadReport`.** All 85 corpus files agree with pydicom and pass F41; `corpus_expected.txt` is empty. One named tolerance remains (*Confirmed contracts*).
+- [x] **5. Lenient reading and `ReadReport`** (`7daad21`). All 85 corpus files agree with pydicom and pass F41; `corpus_expected.txt` is empty. One named tolerance remains (*Confirmed contracts*).
   - `ReadReport` on `file.report` and `ds.report`: 14 repair kinds, each with a case in `test/read/lenient_test.dart`.
   - `ReadOptions.force` and `tags`; syntax detection; the UN rules (`unReplaced`, `unSequence`); pydicom's ambiguous-VR rules settled once a dataset level is read; truncation kept partial; wrong lengths decode the whole values.
   - F41 shared by the fixture and corpus round trips (`test/support/f41.dart`), with two refinements recorded in the blueprint.
   - Divergences from pydicom: a wrong-length number decodes (pydicom throws on access); a dataset that ends inside an undefined-length value keeps what came before (pydicom empties it).
-- [ ] **6. Written-file gate.** `tool/write_all.dart` → pydicom exports → the Dart comparator (I-18); `dcmdump` with a versioned allowlist.
+- [x] **6. Written-file gate.** `scripts/written_gate.sh`: the fixtures in the dry gates (65 files written, 24 refused as expected), the corpus in the corpus job (362 written, 238 refused).
+  - `tool/write_all.dart` writes each source in every syntax it can (as read, Implicit, Explicit, Deflated) and asserts each refusal F41 promises: encapsulated ↔ native, Big Endian as read, partial reads, missing or contradicting SOP UIDs.
+  - `fixtures golden --written` exports pydicom's reading; `test/written_test.dart` checks it agrees with dartdicom's reading (I-11), that dartdicom's reading holds the source's elements in the new encoding, that pydicom's pixel arrays match the source's (I-18), and that `dcmdump` raises nothing the source didn't, beyond `test/dcmdump_allowlist.txt`.
+  - The check is transitive (pydicom ↔ dartdicom on the written file, dartdicom written ↔ source), so the comparator needs one more named tolerance only: implicit private tags pydicom types from its private dictionary (F11).
+  - The writer gives a sequence the dictionary doesn't know (a private one) an undefined length in Implicit VR, so a reader without a private dictionary still finds its items (found on `OBXXXX1A_expb.dcm`).
 - [ ] **7. Fuzz, PHI canary, close.** The parser, inflater and `force` path fuzzed; the sentinel scenario (I-9).
 
 **Exit:**
@@ -187,6 +191,8 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| DCMTK 3.7.0's `dcmdump` raises nothing on the 427 files dartdicom writes from the fixtures and the corpus, except a notice for private sequences in Implicit VR (CP-246, allowlisted). The one source warning, OW on encapsulated Pixel Data in `SC_rgb_rle_16bit.dcm`, is the source's: the as-read write copies it under I-10. | `scripts/written_gate.sh`, 2026-10-17 |
+| pydicom types private tags in Implicit VR from its private dictionary, sequences included: a defined-length private SQ written as Implicit VR reads as an SQ in pydicom and as UN without one (`OBXXXX1A_expb.dcm`, (200D,110D)). | `written_test.dart`, pydicom 3.0.2, 2026-10-17 |
 | pydicom 3.0.2 empties a dataset that ends inside an undefined-length value: `read_dataset` builds it in a dict comprehension, so the `EOFError` loses every element read before (`emri_small_jpeg_2k_lossless_too_short.dcm`). dartdicom keeps them and reports `valueDropped`; the comparator's only tolerance excuses exactly this. | pydicom `filereader.py`, 2026-10-17 |
 | pydicom's ambiguous-VR rules key on the *dataset's* encoding as read (`original_encoding`): implicit Pixel Data and waveform data are OW even where one element was read implicitly in an explicit dataset. | pydicom 3.0.2 `filewriter.py`, 2026-10-17 |
 | The repairs the pydicom-data corpus needs: 37 `unReplaced` (`explicit_VR-UN.dcm`, `bad_sequence.dcm`), 5 `staleGroupLength` (`693_*`), 5 `noPreamble` (4 JPEG-LS files with meta at offset 0, `OT-PAL-8-face.dcm`), 1 `noFileMeta`, 1 `valueDropped`. No file triggers a syntax, length or VM repair. The 4 JPEG-LS files carry no SOP UIDs anywhere, so they read but can't be written. | `corpus_test.dart` census, 2026-10-17 |

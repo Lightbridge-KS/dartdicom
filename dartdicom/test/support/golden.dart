@@ -52,6 +52,27 @@ final class GoldenCompare {
 
   void _element(Map<String, Object?> g, DataElement e, String at) {
     if (e.vr.code != g['vr']) {
+      // pydicom types an Implicit VR private tag from its private
+      // dictionary, which dartdicom doesn't have (F11): it stays UN, and
+      // the bytes must be the ones pydicom read.
+      // An empty value has no raw form recorded: nothing to compare.
+      final raw = g['raw'] as Map<String, Object?>? ??
+          (_isEmpty(g['value']) ? const {'vr': null, 'len': 0} : null);
+      if (e.vr == Vr.UN &&
+          e.tag.isPrivate &&
+          raw != null &&
+          raw['vr'] == null) {
+        final bytes = e.value as Uint8List;
+        if (bytes.length == raw['len'] &&
+            (bytes.isEmpty ||
+                sha256.convert(bytes).toString() == raw['sha256'])) {
+          _tolerate('an implicit private tag pydicom types from its private '
+              'dictionary (F11)');
+        } else {
+          mismatches.add('$at: bytes differ (implicit private)');
+        }
+        return;
+      }
       mismatches.add('$at: VR ${e.vr.code}, pydicom ${g['vr']}');
       return;
     }
@@ -89,9 +110,7 @@ final class GoldenCompare {
       case List():
         final plain = ours.map(_plain).toList();
         final ok = switch (plain.length) {
-          0 => golden == '' ||
-              golden == null ||
-              (golden is List && golden.isEmpty),
+          0 => _isEmpty(golden),
           1 => _same(plain.single, golden),
           _ => _same(plain, golden),
         };
@@ -99,6 +118,9 @@ final class GoldenCompare {
     }
   }
 }
+
+bool _isEmpty(Object? golden) =>
+    golden == null || golden == '' || (golden is List && golden.isEmpty);
 
 /// Deep equality over JSON-shaped values.
 bool _same(Object? a, Object? b) {

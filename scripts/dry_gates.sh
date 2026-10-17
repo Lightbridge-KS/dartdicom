@@ -27,6 +27,12 @@ elif [ -n "${CI:-}" ]; then
 else
   echo "skipped (uv not installed; CI runs it)"
 fi
+step "written files (pydicom, DCMTK)"
+if command -v uv >/dev/null; then
+  scripts/written_gate.sh
+else
+  echo "skipped (uv not installed; CI runs it)"
+fi
 step "publish dry-run"
 for p in dartdicom dartdicom_pixel dartdicom_net dartdicom_web; do
   # pub warns (exit 65) about uncommitted changes. Locally, skip a dirty

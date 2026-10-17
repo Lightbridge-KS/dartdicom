@@ -78,6 +78,20 @@ def corpus_golden_into(name: str) -> int:
     return len(sources)
 
 
+def written_golden_into(out: Path) -> int:
+    """Writes pydicom's reading of every file `write_all.dart` wrote into
+    `out`, beside it as `<target>.json`."""
+    manifest = json.loads((out / "manifest.json").read_text())
+    count = 0
+    for entry in manifest:
+        if "written" not in entry:
+            continue
+        written = Path(entry["written"])
+        written.with_suffix(".json").write_text(golden.golden_or_error(written, out))
+        count += 1
+    return count
+
+
 @app.command("golden")
 def golden_cmd(
     corpora: Annotated[
@@ -87,8 +101,20 @@ def golden_cmd(
             help="Export the cached corpora into the cache instead of the fixtures.",
         ),
     ] = False,
+    written: Annotated[
+        Path | None,
+        typer.Option(
+            "--written",
+            help="Export the files `dart run tool/write_all.dart` wrote into "
+            "this directory, beside each one.",
+        ),
+    ] = None,
 ) -> None:
-    """Regenerate pydicom's golden JSON for every fixture (or corpus file)."""
+    """Regenerate pydicom's golden JSON for every fixture (or corpus file, or
+    written file)."""
+    if written is not None:
+        typer.echo(f"wrote {written_golden_into(written)} golden files")
+        return
     if corpora:
         for name in corpus.CORPORA:
             count = corpus_golden_into(name)

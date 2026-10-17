@@ -184,6 +184,27 @@ void main() {
         expect(back.get(DicomTags.studyDescription)?.length, length);
       }
     });
+
+    test('a private sequence reads back as one from Implicit VR', () {
+      const privateSequence = Tag(0x00091010);
+      final ds = Dataset()
+        ..setRaw(const Tag(0x00090010), Vr.LO, ['ACME'])
+        ..setRaw(privateSequence, Vr.SQ,
+            Sequence([Dataset()..set(DicomTags.patientName, 'Doe^Jane')]));
+      for (final ts in [
+        TransferSyntaxes.explicitVrLittleEndian,
+        TransferSyntaxes.implicitVrLittleEndian,
+      ]) {
+        final back = Dataset.fromBytes(ds.toBytes(transferSyntax: ts),
+            transferSyntax: ts);
+        expect(
+            back
+                .getSequence(privateSequence)
+                ?.single
+                .get(DicomTags.patientName),
+            'Doe^Jane');
+      }
+    });
   });
 
   group('Pixel Data never moves between compressed and native syntaxes', () {

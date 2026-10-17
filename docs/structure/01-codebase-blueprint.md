@@ -255,6 +255,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Change how file meta is derived or validated (I-17), or the implementation UID and version name | `dartdicom/lib/src/file/`, `dartdicom/lib/src/uid/implementation.dart` |
 | Change the folder layout or naming of stored files | `dartdicom_net/lib/src/sink/` |
 | Add a character set | `dartdicom/lib/src/charset/` |
+| Add a transfer syntax or refusal to the written-file gate | `dartdicom/tool/write_all.dart` (the matrix and the refusals it expects), `dartdicom/test/written_test.dart` (the comparison), `dartdicom/test/dcmdump_allowlist.txt` (DCMTK messages allowed, by version, each with its reason) |
 | Add a lenient-read repair | `dartdicom/lib/src/read/parser.dart`, plus its `RepairKind` in `dartdicom/lib/src/dataset/read_report.dart` and a case in `test/read/lenient_test.dart` *(amended)* |
 | Add an uncompressed transfer syntax | `dartdicom/lib/src/uid/transfer_syntax.dart`: a descriptor (explicit VR? endianness, deflated, encapsulated) that both the reader and the writer read |
 | Change PHI masking | `dartdicom/lib/src/redact/` |
@@ -301,7 +302,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-15 ★ | `dart format` is clean and `dart analyze --fatal-infos` passes | CI and pre-commit |
 | I-16 ★ | A release tag's version equals the package's `pubspec.yaml` version | `publish.yml` guard |
 | I-17 ★ | A write fails when the meta's SOP UIDs differ from the dataset's, and the written (0002,0010) equals the encoding actually used | writer tests (F23) |
-| I-18 ★ | A Big Endian fixture written as Little Endian gives the same pixel array (read by pydicom) as the original | golden test (F17) |
+| I-18 ★ | A Big Endian fixture written as Little Endian gives the same pixel array (read by pydicom) as the original | the written-file gate, `scripts/written_gate.sh` (F17): every fixture and corpus file written in each syntax it can be, read back by pydicom and DCMTK *(amended)* |
 | I-19 ★ | The VR → Dart contract is unchanged: every `Vr` is listed with its expected Dart type | contract test (F18) |
 | I-20 ★ | Store as received: the dataset bytes in a stored file equal the bytes received | net test over `InMemoryTransport` (F25) |
 | I-21 ★ | Every path `DirectorySink` writes, relative to its root, matches `^[0-9.]+(/[0-9.]+)*\.dcm$` | sink test (F20) |
@@ -323,6 +324,9 @@ Interfaces exist only at real seams, and each has at least two implementations.
 - format, analyze, `dart test -p vm`
 - for core, pixel and web: `-p chrome` and the wasm compile check
 - `check_deps`, the generated-files check, `dart pub publish --dry-run`
+- the written-file gate on the fixtures: pydicom and DCMTK (installed from apt) read everything dartdicom writes *(amended)*
+
+**Corpus gates** (`corpus.yml`, on core or fixture changes and nightly): the pinned pydicom-data corpus, cached. `corpus_test.dart` (I-11, F41) and the written-file gate over the corpus. *(amended)*
 
 **Live gates** (`interop.yml`, nightly and manual, not on PRs):
 
