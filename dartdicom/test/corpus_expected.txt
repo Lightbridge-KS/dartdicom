@@ -1,3 +1,0 @@
-# pydicom-data files that still fail corpus_test.dart, each with the reason
-# and the M2 step that fixes it. The test fails if an unlisted file fails or a
-# listed one passes, so this list only shrinks (docs/progress/overview-v0.md).

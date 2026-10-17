@@ -1,8 +1,0 @@
-# DCMTK messages the written-file gate allows (test/gates/written_test.dart),
-# beyond those the source file already raises: `<version prefix> <regex>`,
-# one per line, e.g. `3.6 ^W: DcmItem: …`. Each entry names why.
-
-# A private sequence in Implicit VR has no VR on the wire; the writer gives it
-# an undefined length so readers find its items, and DCMTK says it did (CP-246).
-# DCMTK 3.6 (apt) words it without "DcmItem: ", and "VR UN" for 3.7's "VR=UN".
-3 ^W: (DcmItem: )?Found element \([0-9a-f]{3}[13579bdf],[0-9a-f]{4}\) with VR ?=?UN and undefined length, reading a sequence with transfer syntax LittleEndianImplicit \(CP-246\)$

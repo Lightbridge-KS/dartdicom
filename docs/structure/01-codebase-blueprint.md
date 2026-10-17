@@ -240,7 +240,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Task | File (one obvious place) |
 |---|---|
 | Add a developer workflow | a `scripts/` script, plus a `justfile` recipe that calls it |
-| Accept a corpus file as a known failure, or remove a fixed one | `dartdicom/test/corpus_expected.txt` (a ratchet: each line has a reason) |
+| Accept a corpus file as a known failure, or remove a fixed one | `corpusExpectedFailures` in `dartdicom/test/gates/expected.dart` (a ratchet; each entry's reason is required) *(amended)* |
 | Add a synthetic fixture scenario | a `@scenario` function in `fixtures/src/dartdicom_fixtures/scenarios.py`, then `just fixtures` |
 | Bump the dev Dart SDK | `mise use dart@<version>` (rewrites `mise.toml`), plus the local `.vscode/settings.json` `dart.sdkPath` |
 | Raise the package floor | `environment: sdk:` in every member's `pubspec.yaml`, plus the CI floor job's version |
@@ -255,7 +255,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Change how file meta is derived or validated (I-17), or the implementation UID and version name | `dartdicom/lib/src/file/`, `dartdicom/lib/src/uid/implementation.dart` |
 | Change the folder layout or naming of stored files | `dartdicom_net/lib/src/sink/` |
 | Add a character set | `dartdicom/lib/src/charset/` |
-| Add a transfer syntax or refusal to the written-file gate | `dartdicom/tool/write_all.dart` (the matrix and the refusals it expects), `dartdicom/test/gates/written_test.dart` (the comparison), `dartdicom/test/dcmdump_allowlist.txt` (DCMTK messages allowed, by version, each with its reason) |
+| Add a transfer syntax or refusal to the written-file gate | `dartdicom/tool/write_all.dart` (the matrix and the refusals it expects), `dartdicom/test/gates/written_test.dart` (the comparison), `dcmdumpAllowlist` in `dartdicom/test/gates/expected.dart` (DCMTK messages allowed, by version, each with its reason) *(amended)* |
 | Add a lenient-read repair | by what it repairs: file framing in `dartdicom/lib/src/read/parser.dart`; an element header (VR, explicit or implicit) in `read/parse/header.dart`; one that is only reported in `read/parse/checks.dart`; structure (truncation, trailing bytes) in `read/parse/walker.dart`. Plus its `RepairKind` in `dartdicom/lib/src/dataset/read_report.dart` and a case in `test/read/lenient_test.dart` *(amended)* |
 | Add an uncompressed transfer syntax | `dartdicom/lib/src/uid/transfer_syntax.dart`: a descriptor (explicit VR? endianness, deflated, encapsulated) that both the reader and the writer read |
 | Change PHI masking | `dartdicom/lib/src/redact/` |

@@ -1,6 +1,6 @@
 // I-11 and I-10 on the cached pydicom-data corpus (M2's exit), as a ratchet:
-// test/corpus_expected.txt lists the files that still fail, each with a
-// reason. The test fails if an unlisted file fails, or a listed one passes.
+// corpusExpectedFailures (expected.dart) lists the files that still fail,
+// each with a reason. The test fails if an unlisted file fails, or a listed one passes.
 //
 // The corpus and pydicom's golden reading of it live in the user cache:
 //   cd fixtures && uv run fixtures corpus fetch && uv run fixtures golden --corpus
@@ -18,6 +18,7 @@ import 'package:test/test.dart';
 
 import '../support/f41.dart';
 import '../support/golden.dart';
+import 'expected.dart';
 
 const _corpus = 'pydicom-data';
 
@@ -41,7 +42,9 @@ void main() {
       fail('no corpus golden at ${goldenRoot.path}; run `uv run fixtures '
           'corpus fetch && uv run fixtures golden --corpus` in fixtures/');
     }
-    final expected = _expected(File('test/corpus_expected.txt'));
+    final expected = {
+      for (final e in corpusExpectedFailures) e.file: e.reason,
+    };
     final failures = <String, String>{};
     final tolerated = <String, int>{};
     var compared = 0;
@@ -105,19 +108,9 @@ void main() {
         '$pydicomUnreadable unreadable by pydicom; tolerated: $tolerated');
     expect(unexpected, isEmpty,
         reason: 'new failures; fix them, or list them with a reason in '
-            'test/corpus_expected.txt:\n'
-            '${unexpected.entries.map((e) => '${e.key}  # ${e.value}').join('\n')}');
+            'corpusExpectedFailures (test/gates/expected.dart):\n'
+            '${unexpected.entries.map((e) => '${e.key}: ${e.value}').join('\n')}');
     expect(fixed, isEmpty,
-        reason: 'these now pass; remove them from test/corpus_expected.txt');
+        reason: 'these now pass; remove them from corpusExpectedFailures');
   }, skip: present || required ? false : 'no corpus in the cache');
 }
-
-/// `path  # reason` lines; blank lines and lines starting with `#` skipped.
-Map<String, String> _expected(File file) => {
-      for (final line
-          in file.existsSync() ? file.readAsLinesSync() : <String>[])
-        if (line.trim().isNotEmpty && !line.trimLeft().startsWith('#'))
-          line.split('#').first.trim(): line.contains('#')
-              ? line.substring(line.indexOf('#') + 1).trim()
-              : '',
-    };

@@ -24,8 +24,8 @@ test/
 └── support/    shared helpers, no _test.dart
 ```
 
-- [ ] **T1 + T2.** Move the tests into the mirrored folders and `gates/`. Move `writer_test.dart`'s file-meta groups (I-17, implementation identity) into `file/dicom_file_test.dart`, with the two I-17 groups as one. Pure moves.
-- [ ] **T3 (option B).** `corpus_expected.txt` and `dcmdump_allowlist.txt` become const records in `gates/expected.dart`, so a reason is required by the type. Both line parsers go away.
+- [x] **T1 + T2** (`b43fabc`). Move the tests into the mirrored folders and `gates/`. Move `writer_test.dart`'s file-meta groups (I-17, implementation identity) into `file/dicom_file_test.dart`, with the two I-17 groups as one. Pure moves.
+- [x] **T3 (option B)** (this commit). `corpus_expected.txt` and `dcmdump_allowlist.txt` become const records in `gates/expected.dart`, so a reason is required by the type. Both line parsers go away.
 - [ ] **T4.** Explore `support/fixtures.dart`: one fixture root and one listing.
 - [ ] **T5.** Explore `support/bytes.dart`: one byte-building kit, shared by `lenient_test` and `phi_canary_test`.
 
@@ -43,5 +43,9 @@ Proof:
 ## Evidence
 
 Baseline at `beca601`: 350 test names on the VM (349 pass, 1 skipped: the written gate, run by its script) and 174 on node.
+
+T1 + T2 (`b43fabc`): the same 350 names on the VM and 174 on node. Only the two tests of the old "I-17: the meta follows the dataset" group are renamed, now under "file meta is derived from the dataset (I-17)". `just dry`, `just fuzz`, `just written --corpus` and the corpus test (85 of 85) pass from their scripts at the new paths.
+
+T3: the Dart regex is identical to the `.txt` one, after that parser's whitespace join. Planting a passing corpus file in `corpusExpectedFailures` fails the corpus test ("these now pass"). Emptying `dcmdumpAllowlist` fails `just written --corpus` on the CP-246 warning, while the fixture-only gate never raises it.
 
 On completion: set `status: complete`, then ask whether to prune this tracker.

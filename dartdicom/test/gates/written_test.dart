@@ -19,6 +19,7 @@ import 'package:test/test.dart';
 
 import '../support/f41.dart' show contentRepairs;
 import '../support/golden.dart';
+import 'expected.dart';
 
 void main() {
   final dir = Platform.environment['DARTDICOM_WRITTEN'];
@@ -195,11 +196,8 @@ final class _Dcmdump {
         RegExp(r'v(\d+\.\d+\.\d+)').firstMatch('${result.stdout}')?.group(1) ??
             'unknown';
     final allowed = [
-      for (final line in File('test/dcmdump_allowlist.txt').readAsLinesSync())
-        if (line.trim().isNotEmpty && !line.startsWith('#'))
-          if (line.split(RegExp(r'\s+')) case [final prefix, ...final rest]
-              when version.startsWith(prefix))
-            RegExp(rest.join(' ')),
+      for (final entry in dcmdumpAllowlist)
+        if (version.startsWith(entry.dcmtk)) RegExp(entry.pattern),
     ];
     return _Dcmdump(version, allowed);
   }
