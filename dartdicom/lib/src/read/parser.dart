@@ -7,6 +7,7 @@ import '../dataset/sequence.dart';
 import '../dictionary/dictionary.dart';
 import '../errors.dart';
 import '../tag/tag.dart';
+import '../tag/tags.g.dart';
 import '../uid/transfer_syntax.dart';
 import '../uid/uid.dart';
 import '../vr/ambiguous.dart';
@@ -42,14 +43,11 @@ Part10 parsePart10(Uint8List bytes, ReadOptions options) {
   }
   final metaParser =
       _Parser(bytes, TransferSyntax.explicitVrLittleEndian, options);
-  final (metaElements, bodyStart) = metaParser.readElements(132, bytes.length,
-      groupOnly: 0x0002, charset: const [], context: _Context());
+  final (metaElements, bodyStart) =
+      metaParser.readElements(132, bytes.length, _Scope.meta, _Context());
   final meta =
       readDataset(metaElements, TransferSyntax.explicitVrLittleEndian.uid);
-  final tsUid = meta.elements
-      .where((e) => e.tag.value == 0x00020010)
-      .map((e) => (e.value as List<String>).firstOrNull)
-      .firstOrNull;
+  final tsUid = meta.get(DicomTags.transferSyntaxUid);
   if (tsUid == null) {
     throw DicomParseException(
         'the file meta has no (0002,0010) TransferSyntaxUID',
@@ -64,9 +62,8 @@ Part10 parsePart10(Uint8List bytes, ReadOptions options) {
 Dataset parseDataset(Uint8List bytes, TransferSyntax ts, ReadOptions options,
     [int start = 0]) {
   _supported(ts.uid, start);
-  final (elements, _) = _Parser(bytes, ts, options).readElements(
-      start, bytes.length,
-      charset: const [], context: _Context(), topLevel: true);
+  final (elements, _) = _Parser(bytes, ts, options)
+      .readElements(start, bytes.length, _Scope.dataset, _Context());
   return readDataset(elements, ts.uid);
 }
 
@@ -82,8 +79,35 @@ TransferSyntax _supported(Uid uid, int offset) {
   return ts;
 }
 
-/// What implicit VR resolution needs from elements read earlier.
+/// What [_Parser.readElements] is reading, which decides where it stops.
+enum _Scope {
+  /// The file meta: stops at the first element outside group 0002.
+  meta,
+
+  /// A whole dataset: stops at its end, or before Pixel Data when
+  /// [ReadOptions.stopBeforePixels] is set.
+  dataset,
+
+  /// A defined-length item: stops at its end.
+  item,
+
+  /// An undefined-length item: stops after its Item Delimitation Item.
+  undefinedItem,
+}
+
+/// What later elements need from earlier ones: the character set for
+/// text, and the pixel attributes implicit VR resolution needs.
 final class _Context {
+  _Context() : charset = const [];
+
+  /// A copy of [parent] for an item: the item sees what its sequence's
+  /// dataset read before it, and what the item reads stays inside it.
+  _Context.inherit(_Context parent)
+      : charset = parent.charset,
+        bitsAllocated = parent.bitsAllocated,
+        pixelRepresentation = parent.pixelRepresentation;
+
+  List<String> charset;
   int? bitsAllocated;
   int? pixelRepresentation;
 }
@@ -99,93 +123,31 @@ final class _Parser {
   final Endian endian;
   final ReadOptions options;
 
-  int _u16(int at) => data.getUint16(at, endian);
-  int _u32(int at) => data.getUint32(at, endian);
-  int _tagAt(int at) => _u16(at) << 16 | _u16(at + 2);
-
-  void _need(int at, int n, int? tag) {
-    if (at + n > bytes.length) {
-      throw DicomParseException('the data ends inside an element',
-          offset: at, tag: tag == null ? null : Tag(tag));
-    }
-  }
-
-  /// Reads elements from [start] until [end], an Item Delimitation Item
-  /// (for an undefined-length item), or, with [groupOnly], the first
-  /// element of another group. Returns them and the offset after the last.
+  /// Reads elements from [start] until [end], or until [scope] says to stop,
+  /// keeping [context] up to date. Returns them and the offset after the
+  /// last.
   (List<DataElement>, int) readElements(
-    int start,
-    int end, {
-    required List<String> charset,
-    required _Context context,
-    int? groupOnly,
-    bool topLevel = false,
-    bool untilItemDelimiter = false,
-  }) {
+      int start, int end, _Scope scope, _Context context) {
     final elements = <DataElement>[];
     var at = start;
     while (at < end) {
       _need(at, 8, null);
       final tag = _tagAt(at);
-      if (groupOnly != null && tag >> 16 != groupOnly) break;
+      if (scope == _Scope.meta && tag >> 16 != 0x0002) break;
       if (tag == _itemDelimiter) {
-        if (untilItemDelimiter) return (elements, at + 8);
+        if (scope == _Scope.undefinedItem) return (elements, at + 8);
         throw DicomParseException('an Item Delimitation Item outside an item',
             offset: at);
       }
-      if (topLevel && options.stopBeforePixels && tag == _pixelData) break;
-
-      final Vr vr;
-      final int length;
-      final int valueStart;
-      if (ts.explicitVr) {
-        final code =
-            latin1.decode(Uint8List.sublistView(bytes, at + 4, at + 6));
-        final explicit = Vr.fromCode(code);
-        if (explicit == null) {
-          throw DicomParseException('unknown VR code in an explicit VR element',
-              offset: at + 4, tag: Tag(tag));
-        }
-        vr = explicit;
-        if (vr.hasLongLength) {
-          _need(at, 12, tag);
-          length = _u32(at + 8);
-          valueStart = at + 12;
-        } else {
-          length = _u16(at + 6);
-          valueStart = at + 8;
-        }
-      } else {
-        length = _u32(at + 4);
-        valueStart = at + 8;
-        final known = _implicitVr(Tag(tag), context);
-        // A tag the dictionary doesn't know, with an undefined length, can
-        // only be a sequence (PS3.5 §7.5.1).
-        vr = known == Vr.UN && length == _undefined ? Vr.SQ : known;
+      if (scope == _Scope.dataset &&
+          options.stopBeforePixels &&
+          tag == _pixelData) {
+        break;
       }
 
-      final int valueEnd;
-      final int next;
-      Object? decoded;
-      if (length == _undefined) {
-        if (vr == Vr.SQ) {
-          final (items, after) =
-              _readItems(valueStart, null, charset, context, tag);
-          decoded = Sequence(items);
-          valueEnd = next = after;
-        } else {
-          valueEnd = next = _skipFragments(valueStart, tag);
-        }
-      } else {
-        _need(valueStart, length, tag);
-        valueEnd = next = valueStart + length;
-        if (vr == Vr.SQ) {
-          final (items, _) =
-              _readItems(valueStart, valueEnd, charset, context, tag);
-          decoded = Sequence(items);
-        }
-      }
-
+      final (:vr, :length, :valueStart) = _readHeader(at, tag, context);
+      final (:valueEnd, :sequence) =
+          _readValue(valueStart, length, vr, context, tag);
       final value = Uint8List.sublistView(bytes, valueStart, valueEnd);
       final element = readElement(
           Tag(tag),
@@ -193,21 +155,21 @@ final class _Parser {
           RawValue(value,
               undefinedLength: length == _undefined,
               littleEndian: ts.littleEndian,
-              specificCharacterSet: charset),
-          decoded: decoded);
+              specificCharacterSet: context.charset),
+          decoded: sequence);
       elements.add(element);
 
       switch (tag) {
         case _specificCharacterSet:
-          charset = element.value as List<String>;
+          context.charset = element.value as List<String>;
         case _bitsAllocated when length >= 2:
           context.bitsAllocated = data.getUint16(valueStart, endian);
         case _pixelRepresentation when length >= 2:
           context.pixelRepresentation = data.getUint16(valueStart, endian);
       }
-      at = next;
+      at = valueEnd;
     }
-    if (untilItemDelimiter) {
+    if (scope == _Scope.undefinedItem) {
       throw DicomParseException(
           'an undefined-length item has no Item Delimitation Item',
           offset: at);
@@ -215,33 +177,75 @@ final class _Parser {
     return (elements, at);
   }
 
+  /// Reads the header of the element at [at], whose tag is [tag]: its VR,
+  /// its value length, and where its value starts.
+  ({Vr vr, int length, int valueStart}) _readHeader(
+      int at, int tag, _Context context) {
+    if (ts.explicitVr) {
+      final code = latin1.decode(Uint8List.sublistView(bytes, at + 4, at + 6));
+      final vr = Vr.fromCode(code);
+      if (vr == null) {
+        throw DicomParseException('unknown VR code in an explicit VR element',
+            offset: at + 4, tag: Tag(tag));
+      }
+      if (vr.hasLongLength) {
+        _need(at, 12, tag);
+        return (vr: vr, length: _u32(at + 8), valueStart: at + 12);
+      }
+      return (vr: vr, length: _u16(at + 6), valueStart: at + 8);
+    }
+    final length = _u32(at + 4);
+    final known = _implicitVr(Tag(tag), context);
+    // A tag the dictionary doesn't know, with an undefined length, can only
+    // be a sequence (PS3.5 §7.5.1).
+    final vr = known == Vr.UN && length == _undefined ? Vr.SQ : known;
+    return (vr: vr, length: length, valueStart: at + 8);
+  }
+
+  /// Finds where the value from [valueStart] ends. An SQ value's items are
+  /// parsed on the way and returned as [Sequence]; other values are only
+  /// sliced, and decode on first access.
+  ({int valueEnd, Sequence? sequence}) _readValue(
+      int valueStart, int length, Vr vr, _Context context, int tag) {
+    if (length == _undefined) {
+      if (vr == Vr.SQ) {
+        final (items, after) = _readItems(valueStart, null, context, tag);
+        return (valueEnd: after, sequence: Sequence(items));
+      }
+      return (valueEnd: _skipFragments(valueStart, tag), sequence: null);
+    }
+    _need(valueStart, length, tag);
+    final valueEnd = valueStart + length;
+    if (vr == Vr.SQ) {
+      final (items, _) = _readItems(valueStart, valueEnd, context, tag);
+      return (valueEnd: valueEnd, sequence: Sequence(items));
+    }
+    return (valueEnd: valueEnd, sequence: null);
+  }
+
   /// Reads SQ items from [start] to [end], or to the Sequence Delimitation
-  /// Item when [end] is null. Items inherit the sequence's character set.
-  (List<Dataset>, int) _readItems(int start, int? end, List<String> charset,
-      _Context context, int sequenceTag) {
+  /// Item when [end] is null. Each item reads with a copy of [context].
+  (List<Dataset>, int) _readItems(
+      int start, int? end, _Context context, int sequenceTag) {
     final items = <Dataset>[];
     var at = start;
     while (end == null || at < end) {
-      _need(at, 8, sequenceTag);
-      final tag = _tagAt(at);
-      final length = _u32(at + 4);
+      final (:tag, :length) = _readItemHeader(at, sequenceTag);
       if (tag == _sequenceDelimiter && end == null) return (items, at + 8);
       if (tag != _item) {
         throw DicomParseException('expected an Item in a sequence',
             offset: at, tag: Tag(sequenceTag));
       }
-      final itemContext = _Context()
-        ..bitsAllocated = context.bitsAllocated
-        ..pixelRepresentation = context.pixelRepresentation;
+      final itemContext = _Context.inherit(context);
       if (length == _undefined) {
-        final (elements, after) = readElements(at + 8, bytes.length,
-            charset: charset, context: itemContext, untilItemDelimiter: true);
+        final (elements, after) = readElements(
+            at + 8, bytes.length, _Scope.undefinedItem, itemContext);
         items.add(readDataset(elements, ts.uid));
         at = after;
       } else {
         _need(at + 8, length, sequenceTag);
-        final (elements, _) = readElements(at + 8, at + 8 + length,
-            charset: charset, context: itemContext);
+        final (elements, _) =
+            readElements(at + 8, at + 8 + length, _Scope.item, itemContext);
         items.add(readDataset(elements, ts.uid));
         at += 8 + length;
       }
@@ -255,9 +259,7 @@ final class _Parser {
   int _skipFragments(int start, int tag) {
     var at = start;
     while (true) {
-      _need(at, 8, tag);
-      final itemTag = _tagAt(at);
-      final length = _u32(at + 4);
+      final (tag: itemTag, :length) = _readItemHeader(at, tag);
       if (itemTag == _sequenceDelimiter) return at + 8;
       if (itemTag != _item || length == _undefined) {
         throw DicomParseException('malformed encapsulated value',
@@ -266,6 +268,13 @@ final class _Parser {
       _need(at + 8, length, tag);
       at += 8 + length;
     }
+  }
+
+  /// Reads the item header at [at], inside the element [ownerTag]: an Item
+  /// or delimitation tag, and its length.
+  ({int tag, int length}) _readItemHeader(int at, int ownerTag) {
+    _need(at, 8, ownerTag);
+    return (tag: _tagAt(at), length: _u32(at + 4));
   }
 
   Vr _implicitVr(Tag tag, _Context context) {
@@ -278,5 +287,16 @@ final class _Parser {
     return resolveVr(entry.vrs,
         bitsAllocated: context.bitsAllocated,
         pixelRepresentation: context.pixelRepresentation);
+  }
+
+  int _u16(int at) => data.getUint16(at, endian);
+  int _u32(int at) => data.getUint32(at, endian);
+  int _tagAt(int at) => _u16(at) << 16 | _u16(at + 2);
+
+  void _need(int at, int n, int? tag) {
+    if (at + n > bytes.length) {
+      throw DicomParseException('the data ends inside an element',
+          offset: at, tag: tag == null ? null : Tag(tag));
+    }
   }
 }
