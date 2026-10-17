@@ -10,7 +10,7 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M2 `dartdicom` P0, planned 2026-10-17 in 10 steps (below); M3 and M4 follow in any order. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Now:** M3 `dartdicom_net` P0 and M4 `dartdicom_pixel` P0, in any order. **M2 is done** (2026-10-17, `94d6759`…): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
 **Next:** M5, 0.1.0 and the first consumer.
 
 ## Roadmap
@@ -113,21 +113,23 @@ Each step ends with the dry and floor gates green, and `just live` after a read 
   - `ReadOptions.force` and `tags`; syntax detection; the UN rules (`unReplaced`, `unSequence`); pydicom's ambiguous-VR rules settled once a dataset level is read; truncation kept partial; wrong lengths decode the whole values.
   - F41 shared by the fixture and corpus round trips (`test/support/f41.dart`), with two refinements recorded in the blueprint.
   - Divergences from pydicom: a wrong-length number decodes (pydicom throws on access); a dataset that ends inside an undefined-length value keeps what came before (pydicom empties it).
-- [x] **6. Written-file gate.** `scripts/written_gate.sh`: the fixtures in the dry gates (65 files written, 24 refused as expected), the corpus in the corpus job (362 written, 238 refused).
+- [x] **6. Written-file gate** (`fe7a42b`). `scripts/written_gate.sh`: the fixtures in the dry gates (65 files written, 24 refused as expected), the corpus in the corpus job (362 written, 238 refused).
   - `tool/write_all.dart` writes each source in every syntax it can (as read, Implicit, Explicit, Deflated) and asserts each refusal F41 promises: encapsulated ↔ native, Big Endian as read, partial reads, missing or contradicting SOP UIDs.
   - `fixtures golden --written` exports pydicom's reading; `test/written_test.dart` checks it agrees with dartdicom's reading (I-11), that dartdicom's reading holds the source's elements in the new encoding, that pydicom's pixel arrays match the source's (I-18), and that `dcmdump` raises nothing the source didn't, beyond `test/dcmdump_allowlist.txt`.
   - The check is transitive (pydicom ↔ dartdicom on the written file, dartdicom written ↔ source), so the comparator needs one more named tolerance only: implicit private tags pydicom types from its private dictionary (F11).
   - The writer gives a sequence the dictionary doesn't know (a private one) an undefined length in Implicit VR, so a reader without a private dictionary still finds its items (found on `OBXXXX1A_expb.dcm`).
-- [ ] **7. Fuzz, PHI canary, close.** The parser, inflater and `force` path fuzzed; the sentinel scenario (I-9).
+- [x] **7. Fuzz, PHI canary, close.** No crash in the dry gates' 6,000 cases or a 150,000-case run; the only failure found was the harness writing Deflated without an encoder (the documented `UnsupportedError`).
+  - `test/fuzz_test.dart` (I-30): bit flips, truncations, rewritten lengths and random tails over the small fixtures; the force path on files cut at random points; the inflater on mutated streams and noise. `just fuzz [cases] [seed]` runs more.
+  - The `phi_canary` fixture and `test/phi_canary_test.dart` (I-9): no `toString`, exception, or read report shows a sentinel, across truncations every 3 bytes, damage around each sentinel, wrong-type reads, write failures and repairs. A planted leak in `DataElement.toString` fails it.
 
-**Exit:**
-- every element agrees with pydicom on the committed fixtures **and** the pydicom-data corpus (I-11), with the corpus exceptions that remain listed and reasoned;
+**Exit** (all met, 2026-10-17):
+- every element agrees with pydicom on the committed fixtures **and** the pydicom-data corpus (I-11), with the corpus exceptions that remain listed and reasoned (none remain);
 - round trips are byte-identical under F41's rule (I-10);
 - pydicom and DCMTK read everything written (`dciodvfy` moves to M5);
 - the PHI canary passes (I-9);
 - the parser, the inflater and the `force` path are fuzzed.
 
-**Tests that will flip:**
+**Tests that flipped:**
 - `vs_pydicom_test`'s readable set widens to Deflated and BE;
 - `round_trip_test` follows F41;
 - the pixel test's BE/Deflated skip goes;

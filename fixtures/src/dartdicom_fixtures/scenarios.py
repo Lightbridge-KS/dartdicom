@@ -274,3 +274,40 @@ def private_tags(name: str) -> Dataset:
     block.add_new(0x01, "LO", "private text")
     block.add_new(0x02, "US", 42)
     return ds
+
+
+#: The marker every PHI canary value carries; the I-9 test fails wherever it
+#: appears outside a value.
+CANARY = "ZXQV"
+
+
+@scenario
+def phi_canary(name: str) -> Dataset:
+    """Sentinel text (ZXQV…) in names, IDs, descriptions, a private element
+    and nested sequence text, for the I-9 canary test."""
+    ds = text_only(name, "ISO_IR 192", f"{CANARY}Family^{CANARY}Given")
+    ds.PatientID = f"{CANARY}-ID-0001"
+    ds.OtherPatientIDsSequence = Sequence([_other_id(f"{CANARY}-OTHER-0002")])
+    ds.PatientComments = f"{CANARY} comment: allergic to synthetic data"
+    ds.InstitutionName = f"{CANARY} Institution"
+    ds.StudyDescription = f"{CANARY} study description"
+    ds.AccessionNumber = f"{CANARY}ACC1"
+    block = ds.private_block(0x0009, "DARTDICOM CANARY", create=True)
+    block.add_new(0x01, "LO", f"{CANARY} private")
+    meaning = Dataset()
+    meaning.CodeValue = "T-D0050"
+    meaning.CodingSchemeDesignator = "SRT"
+    meaning.CodeMeaning = f"{CANARY} nested meaning"
+    item = Dataset()
+    item.ReferencedSOPClassUID = CTImageStorage
+    item.ReferencedSOPInstanceUID = uid(name, "referenced")
+    item.PurposeOfReferenceCodeSequence = Sequence([meaning])
+    ds.ReferencedImageSequence = Sequence([item])
+    return ds
+
+
+def _other_id(value: str) -> Dataset:
+    other = Dataset()
+    other.PatientID = value
+    other.TypeOfPatientID = "TEXT"
+    return other

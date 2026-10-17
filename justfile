@@ -53,6 +53,10 @@ test-web platform="node":
 floor:
     scripts/floor_check.sh
 
+# Fuzz the parser, the inflater and the force path longer than the dry gates (cases per group, first seed).
+fuzz cases="100000" seed="0":
+    scripts/fuzz.sh {{cases}} {{seed}}
+
 # Run every pre-commit hook on every file.
 hooks:
     prek run --all-files

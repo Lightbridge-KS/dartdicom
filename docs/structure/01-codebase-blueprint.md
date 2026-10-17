@@ -293,7 +293,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-6 ★ | In net, only `transport/`, `scp/` and `sink/` import `dart:io` | `dartdicom_net/test/architecture_test.dart` |
 | I-7 ★ | No top-level mutable variables (`var`, `late`, non-const `final`) in any `lib/` | architecture test (grep) |
 | I-8 ★ | Generated files match the generator's output for the pinned release | `dart run tool/gen_dictionary/main.dart --check` in `.github/workflows/generated.yml` (on generator or output changes; the release XML is cached) |
-| I-9 ★ | Element values never appear in exception messages, the default `toString`, trace output, or the `ReadReport` | PHI canary test: fixtures carry sentinel values; the test triggers errors and traces and asserts the sentinels are absent |
+| I-9 ★ | Element values never appear in exception messages, the default `toString`, trace output, or the `ReadReport` | PHI canary test (`dartdicom/test/phi_canary_test.dart` over the `phi_canary` fixture): sentinel values in names, IDs, descriptions, a private element and nested sequence text; truncated and damaged reads, wrong-type reads, write failures and repairs must not show them *(amended)* |
 | I-10 ★ | Reading then writing an untouched file in the same transfer syntax gives byte-identical output, under F41's rule (repaired files reach a fixpoint; Deflated compares the inflated body) *(amended)* | golden round-trip test, corpus test |
 | I-11 ★ | Every element agrees with pydicom on the fixture corpus | `vs_pydicom_test.dart` against `fixtures/data/golden/` |
 | I-12 ★ | PDUs and command sets are byte-identical to pynetdicom's encoders | net golden test against pynetdicom-generated fixtures |
@@ -314,6 +314,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-27 ★ | Writing text the declared charset can't encode, or non-ASCII text with no (0008,0005), fails with a `DicomWriteException` that names the tag and suggests the fix | writer test (F35) |
 | I-28 ★ | The committed fixtures, golden files and `PROVENANCE.md` reproduce exactly from the pinned tools | `fixtures check` via `scripts/check_fixtures.sh` (in the dry gates) |
 | I-29 ★ | In core, only `vr/value_codec.dart` imports `vr/codec/`; the rest of `lib/` reaches the codec families through it (`export … show`) | architecture test |
+| I-30 ★ | Malformed input never throws anything but a `DicomParseException` on read (a `DicomWriteException` on write), and the inflater only a `FormatException` (PRD *Untrusted input*) | `dartdicom/test/fuzz_test.dart`: seeded, 2,000 cases per group in the dry gates over mutated fixtures, the force path and the inflater; `just fuzz` runs more |
 
 ## 9. CI and release
 

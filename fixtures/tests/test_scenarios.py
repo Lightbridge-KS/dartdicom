@@ -23,6 +23,7 @@ def test_every_scenario_has_a_description() -> None:
 def test_scenario_writes_a_readable_part10_file(name: str, tmp_path: Path) -> None:
     ds = pydicom.dcmread(scenarios.write(name, tmp_path))
     assert ds.SOPInstanceUID == scenarios.uid(name, "instance")
-    assert str(ds.PatientName).startswith(("Synthetic", "Müller", "Çelik"))
+    synthetic = ("Synthetic", "Müller", "Çelik", scenarios.CANARY)
+    assert str(ds.PatientName).startswith(synthetic)
     if "PixelData" in ds:
         assert ds.pixel_array.size > 0

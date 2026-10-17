@@ -24,6 +24,7 @@ freely redistributable; none holds real patient data.
 | `synthetic/missing_study_date.dcm` | synthetic | StudyDate absent; StudyTime present but empty (Type 2). | `8ee1b7f3649e2a1e…` |
 | `synthetic/sequences_undefined_length.dcm` | synthetic | Nested sequences and items with undefined length. | `ae0abe889db385cc…` |
 | `synthetic/private_tags.dcm` | synthetic | A private creator (0009,0010) and two private elements. | `332854acf024fc16…` |
+| `synthetic/phi_canary.dcm` | synthetic | Sentinel text (ZXQV…) in names, IDs, descriptions, a private element and nested sequence text, for the I-9 canary test. | `4f7187068cf1a8c3…` |
 | `pydicom/CT_small.dcm` | pydicom 3.0.2 test data | Explicit VR LE, ISO_IR 100, private tags | `3dd31e5cc835b3f2…` |
 | `pydicom/MR_small.dcm` | pydicom 3.0.2 test data | Explicit VR LE | `3f27d1c22f1a66e8…` |
 | `pydicom/MR_small_implicit.dcm` | pydicom 3.0.2 test data | Implicit VR LE | `6077442c42a56fc7…` |
