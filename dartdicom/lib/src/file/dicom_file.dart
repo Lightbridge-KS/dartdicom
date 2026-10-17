@@ -72,36 +72,57 @@ final class DicomFile {
   FileMetaInformation _derivedMeta(TransferSyntax ts) {
     final derived =
         readDataset(meta.dataset.elements, meta.dataset.transferSyntax);
-    void derive(One<String> metaTag, One<String> datasetTag) {
-      final fromDataset = dataset.get(datasetTag);
+
+    // A SOP UID is held twice: once in the meta (metaTag) and once in the
+    // dataset (from). The dataset is the source; the meta follows it.
+    void deriveSopUid(One<String> metaTag, {required One<String> from}) {
+      final fromDataset = dataset.get(from);
       final fromMeta = derived.get(metaTag);
       if (fromDataset == null) {
+        // Neither has the UID, so the meta has nothing to be derived from.
         if (fromMeta == null) {
           throw DicomWriteException(
-              'the dataset needs ${describeTag(datasetTag)} to write a file',
-              tag: datasetTag);
+              'the dataset needs ${describeTag(from)} to write a file',
+              tag: from);
         }
+        // Only the meta has it: nothing to check it against, so keep it.
         return;
       }
       if (fromMeta == null) {
+        // Only the dataset has it: copy it into the meta.
         derived.set(metaTag, fromDataset);
       } else if (fromMeta != fromDataset) {
+        // Both have it and they differ: don't guess which one is right (I-17).
         throw DicomWriteException(
-            'the file meta and the dataset disagree on ${describeTag(datasetTag)}; '
+            'the file meta and the dataset disagree on ${describeTag(from)}; '
             'set ${describeTag(metaTag)} to match, or remove it so it is derived',
             tag: metaTag);
       }
     }
 
-    derive(DicomTags.mediaStorageSopClassUid, DicomTags.sopClassUid);
-    derive(DicomTags.mediaStorageSopInstanceUid, DicomTags.sopInstanceUid);
+    deriveSopUid(DicomTags.mediaStorageSopClassUid,
+        from: DicomTags.sopClassUid);
+    deriveSopUid(DicomTags.mediaStorageSopInstanceUid,
+        from: DicomTags.sopInstanceUid);
+
+    // (0002,0010) names the encoding actually used (I-17), which differs from
+    // the meta's when that is missing or unknown and [toBytes] falls back to
+    // Explicit VR LE. Set it only when it differs: a set element is
+    // re-encoded, an untouched one is copied byte for byte (I-10).
     if (derived.get(DicomTags.transferSyntaxUid) != ts.uid.value) {
       derived.set(DicomTags.transferSyntaxUid, ts.uid.value);
     }
-    _setIfAbsent(derived, DicomTags.implementationClassUid,
-        dartdicomImplementationClassUid.value);
-    _setIfAbsent(derived, DicomTags.implementationVersionName,
-        dartdicomImplementationVersionName);
+    // The implementation identity is kept as read; dartdicom's fills in only
+    // where the meta has none.
+    if (!derived.contains(DicomTags.implementationClassUid)) {
+      derived.set(DicomTags.implementationClassUid,
+          dartdicomImplementationClassUid.value);
+    }
+    if (!derived.contains(DicomTags.implementationVersionName)) {
+      derived.set(DicomTags.implementationVersionName,
+          dartdicomImplementationVersionName);
+    }
+    // The meta version is the two bytes 00H 01H (PS3.10 §7.1).
     if (!derived.contains(DicomTags.fileMetaInformationVersion)) {
       derived.set(
           DicomTags.fileMetaInformationVersion, Uint8List.fromList([0, 1]));
@@ -113,8 +134,4 @@ final class DicomFile {
   String toString() =>
       'DicomFile(${meta.transferSyntaxUid?.value ?? 'no transfer syntax'}, '
       '${dataset.length} elements)';
-}
-
-void _setIfAbsent(Dataset ds, One<String> tag, String value) {
-  if (!ds.contains(tag)) ds.set(tag, value);
 }
