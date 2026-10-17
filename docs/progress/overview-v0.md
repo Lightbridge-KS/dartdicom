@@ -10,7 +10,7 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M1 Tracer bullet. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Now:** M1 Tracer bullet, planned 2026-10-17 in 8 steps (below). **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
 **Next:** M2–M4, filling out core, net and pixel, in any order.
 
 ## Roadmap
@@ -43,12 +43,38 @@ M1 builds the thinnest end-to-end slice through every package the first consumer
 
 ### M1 Tracer bullet: "find, get, show one image"
 
-- [ ] core: read and write Explicit VR LE and Implicit VR LE, with enough dictionary and value support for the slice
-- [ ] net: associate and release; C-ECHO; C-FIND at study level; C-GET of one series with role selection; `InstanceSink`
-- [ ] pixel: native 16-bit monochrome → Modality LUT → VOI window → 8-bit buffer
-- [ ] `examples/retrieve_and_render.dart`: Orthanc → C-FIND → C-GET → write one frame as a PGM
+Planned 2026-10-17. Each step ends with the dry gates green.
+
+- [ ] **0. Spike and docs.**
+  - The DCMTK `findscu` / `getscu` run against the compose Orthanc is done (see *Confirmed contracts*).
+  - Docs amended: blueprint F38 (`file/`, `Dataset.fromBytes`, I-5 narrowed) and F39 (the sink parses the header), surface S7 and S8, data §4.2.
+- [ ] **1. Core model.**
+  - `errors.dart` (`DicomException` + the sealed `DicomDataException`); the `TransferSyntax` descriptor; the implementation identity; per-VR converters; charsets (default, `ISO_IR 100`, `ISO_IR 192`; F35 on encode).
+  - `DataElement` keeps its raw span; `Dataset` (typed reads and writes, iteration, `transferSyntax`); `Sequence`.
+- [ ] **2. Core parse, write, façade.**
+  - A sync parser for Explicit and Implicit VR LE: defined and undefined lengths, nested SQ, encapsulated data kept raw, `stopBeforePixels`, ambiguous OB/OW and US/SS.
+  - A passthrough writer; `file/` (`DicomFile`, `FileMetaInformation`, I-17); `io.dart` over whole-file bytes.
+  - Tests: I-11 and I-10 on the LE fixtures.
+- [ ] **3. Pixel.**
+  - `ds.pixels.frame(i)` → `PixelArray`, with BitsStored masking; Modality LUT; linear VOI (PS3.3 C.11.2.1.2.1); MONOCHROME1; `ds.voiWindow()`; `DisplayBuffer` (`gray`, `toRgba()`).
+  - Tests: sha256 against golden for the 16-bit monochrome fixtures.
+- [ ] **4. Net through C-ECHO.** Transports (socket, in-memory), PDUs (with role selection), framing, the FSM (requestor rows), ACSE, `ApplicationEntity`, `associate` / `sendCEcho` / `release` / `abort`, and `DimseStatus`.
+  - Tests: hand-checked PS3.8 vectors, a captured Orthanc A-ASSOCIATE-AC, and a live echo.
+- [ ] **5. DIMSE and C-FIND.** Command sets, the fragmenter, the assembler (every PDV of every P-DATA-TF), and message IDs. `sendCFind` → `Stream<Dataset>` (S5).
+  - Tests: a scripted peer, and a live find at STUDY and SERIES level.
+- [ ] **6. C-GET and sinks.** `PresentationContexts.commonStorage` plus role items (≤ 128 contexts); `sendCGet` → `Stream<RetrieveProgress>`; `InstanceSink`, `ReceivedInstance`, `MemorySink`, `DirectorySink`.
+  - Tests: I-20, I-21, and a live series get.
+- [ ] **7. Example and live gate.** `examples/bin/retrieve_and_render.dart` (Orthanc → C-FIND → C-GET → PGM); `scripts/pacs_seed.sh`, `scripts/live_gates.sh`, `just pacs-seed` / `just live`; `interop.yml` (`workflow_dispatch` only).
 
 **Exit:** the example retrieves a series from Orthanc and renders a frame. Every seam is crossed: bytes → `Dataset` → pixels, and PDVs → `Dataset` → sink.
+
+**M1 limits** (each is lifted later):
+
+- Cancelling a `sendCFind` / `sendCGet` subscription **aborts the association**. C-CANCEL-RQ (F14) comes in M3.
+- One operation runs at a time per association, and a second concurrent call throws `StateError`.
+- There are no timers yet (ARTIM, DIMSE, ACSE: N-13 in M3), so the live gate runs under `timeout`.
+- Files are read as whole bytes (`FileSource` and deferral are M2).
+- Deflated and Big Endian data isn't supported yet (M2).
 
 ### M2 `dartdicom` P0 complete
 
@@ -104,7 +130,7 @@ These run in order of demand:
 ## Open questions
 
 - **Before 1.0:** does PN become `PersonName`, and do DA/TM/DT become date types (C-15)? Typed tags fix each VR's Dart type in every generated constant, so this is free only before 1.0 (data §8).
-- **M1 / M3:** which PACS products must the first consumer support, and do they support C-GET? The answer settles whether the tracer and the default retrieve path use C-GET or C-MOVE.
+- **M3:** which PACS products must the first consumer support, and do they support C-GET? The answer settles whether the default retrieve path is C-GET or C-MOVE. The tracer uses C-GET, which the test Orthanc supports (confirmed 2026-10-17).
 
 **Answered 2026-10-17** (recorded in blueprint §3):
 
@@ -116,6 +142,9 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| Orthanc 1.13.0 (image `orthancteam/orthanc:26.9.1`) as a C-GET SCP accepts a role item with SCU 0 and SCP 1 for each proposed storage class (`Accepted SCP/SCU Role: SCP`). It accepts the first proposed transfer syntax (Explicit VR LE), receives at most 16384-byte PDUs, and identifies itself as DCMTK 3.7.0 (`1.2.276.0.7230010.3.0.3.7.0`, `OFFIS_DCMTK_370`). `getscu` proposed 121 contexts, and all were accepted. | DCMTK `getscu -d`, 2026-10-17 |
+| Orthanc's C-GET of a one-instance series goes: C-STORE-RQ, then a Pending C-GET-RSP (remaining 0, completed 1), then a final Success with **no** Remaining element | DCMTK `getscu -d`, 2026-10-17 |
+| Orthanc's C-FIND matches come in Explicit VR LE and carry (0008,0005) `ISO_IR 100` and (0008,0054) RetrieveAETitle. A SERIES-level query needs StudyInstanceUID. | DCMTK `findscu`, 2026-10-17 |
 | The full dictionary costs about +78 KB gzipped under dart2js, which is acceptable | local spike, 2026-10-16 |
 | An open `RandomAccessFile` or `ServerSocket`, or an object holding one, cannot be sent to another isolate; a closure capturing only a path can | local spike, Dart 3.8.1, 2026-10-16 |
 | `package:http`'s `BrowserClient` uses fetch (from 1.3.0) and streams responses, but not request bodies | `package:http` source and changelog |

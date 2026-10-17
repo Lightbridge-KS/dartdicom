@@ -1,5 +1,5 @@
 ---
-summary: The developer-facing and agent-facing surface of the dartdicom packages. Covers the cheat sheet; the public API map per package and entry import; onboarding with the pydicom → dartdicom mapping; usage journeys (read and display, query and retrieve, modify and write); the error and return contract; naming and ergonomics rules (D4, typed tags, sync vs async); agent experience (AX); options. Surface decisions S1–S6 (2026-10-16/17) are recorded in §8.
+summary: The developer-facing and agent-facing surface of the dartdicom packages. Covers the cheat sheet; the public API map per package and entry import; onboarding with the pydicom → dartdicom mapping; usage journeys (read and display, query and retrieve, modify and write); the error and return contract; naming and ergonomics rules (D4, typed tags, sync vs async); agent experience (AX); options. Surface decisions S1–S8 (2026-10-16/17) are recorded in §8.
 read_when:
   - adding, naming or changing any public symbol, getter, option or exception
   - writing README, quick-starts, examples, dartdoc, or llms.txt
@@ -93,6 +93,9 @@ flowchart TD
 |---|---|---|
 | `DicomFile.fromBytes(bytes, {options})` | parse bytes from anywhere (memory, Blob, HTTP, PDVs) | C-08 |
 | `file.toBytes({options})` | encode to Part 10 bytes | C-11 |
+| `Dataset.fromBytes(bytes, transferSyntax:)` / `ds.toBytes(transferSyntax:)` | a bare dataset with no Part 10 header, e.g. a DIMSE identifier (S7) | C-08, N-04 |
+| `ds.transferSyntax` | the encoding a dataset was read in; `null` if it was built in memory (blueprint F4) | X-03 |
+| `FileMetaInformation.forInstance(...)` · `meta.toHeaderBytes()` | the preamble, `DICM` and group 0002 that precede a dataset in a Part 10 file; lets a sink store bytes as received | C-07, N-11 |
 | `File(p).readAsDicom({options})` / `readAsDicomSync` | read from disk; async by default | C-20 |
 | `File(p).writeAsDicom(file)` / `writeAsDicomSync` | write to disk | C-20 |
 | `file.meta` / `file.dataset` | file meta (group 0002) vs content | C-07 |
@@ -106,7 +109,7 @@ flowchart TD
 | `file.report` (`ReadReport`) | the repairs lenient reading made (C-10) | C-10 |
 | `ds.dump()` | readable tree; values masked unless opted in | C-21 |
 | `ds.pixels.frame(i)` → `PixelArray` | decode one frame | X-01–X-03 |
-| `.toDisplay(window)` → `DisplayBuffer` · `ds.voiWindow()` | apply LUTs, get 8-bit pixels | X-04, X-07 |
+| `.toDisplay(window)` → `DisplayBuffer` · `ds.voiWindow()` | apply LUTs, get 8-bit pixels: `gray`, or `toRgba()` (S8) | X-04, X-07 |
 | `ApplicationEntity(...)` · `.associate(host, port, aeTitle:)` | configure and connect (S2) | N-05 |
 | `assoc.sendCEcho()` · `sendCStore(file)` | single-response operations → `DimseStatus` | N-06, N-10 |
 | `assoc.sendCFind(query)` | stream of matches (S5) | N-07 |
@@ -175,8 +178,8 @@ final desc = head.dataset.get(DicomTags.seriesDescription);
 // Viewer: full read, then one frame to the screen.
 final file = await File(path).readAsDicom();
 final ds = file.dataset;
-final buf = ds.pixels.frame(0).toDisplay(ds.voiWindow());  // DisplayBuffer: width, height, rgba
-// Flutter side (the app's code): ui.decodeImageFromPixels(buf.rgba, buf.width, buf.height, ...)
+final buf = ds.pixels.frame(0).toDisplay(ds.voiWindow());  // DisplayBuffer: width, height, gray
+// Flutter side (the app's code): ui.decodeImageFromPixels(buf.toRgba(), buf.width, buf.height, ...)
 ```
 
 The library stops at an 8-bit RGBA buffer. Turning it into a widget is the app's job, because no package depends on Flutter.
@@ -351,6 +354,8 @@ Everything is passed per call or per instance. Nothing is global (PRD constraint
 | S4 | Keyword → identifier rule | **Decided.** Effective Dart lowerCamelCase, acronyms folded (`sopInstanceUid`), the DICOM keyword in dartdoc, the generator failing on collisions | §6.2 |
 | S5 | Final status of multi-response operations | **Decided.** Complete normally on Success, Warning or Cancel; a final Failure becomes a stream error; retrieves also carry the final status in their last progress event (refines D3) | §5 |
 | S6 | Name of the generated tag namespace | **Decided 2026-10-17: `DicomTags`** (`DicomTags.patientName`). `Tags` collided with `package:test`'s `Tags` (found in M0), which would give every consumer test file an `ambiguous_import`. Rejected: static constants on `Tag` (the generator would have to emit the whole `Tag` type, with its hand-written members in a template), and keeping `Tags` with a documented `hide`. | §6.2 |
+| S7 | How a bare dataset (no Part 10 header) is decoded and encoded | **Decided 2026-10-17:** `Dataset.fromBytes(bytes, transferSyntax:)` / `ds.toBytes(transferSyntax:)`, mirroring `DicomFile`; the required `transferSyntax:` tells the two apart. Rejected: a `DatasetCodec` value (it keeps I-5 strict, but is harder to find). Blueprint F38. | §2 |
+| S8 | What `DisplayBuffer` holds | **Decided 2026-10-17:** 8-bit `gray` (one byte per pixel), with `toRgba()` as a method because it allocates 4× the memory. Color (X-08) adds channels later. Rejected: an `rgba` getter. | §2, §4.1 |
 
 **Rejected:**
 
@@ -365,7 +370,8 @@ Everything is passed per call or per instance. Nothing is global (PRD constraint
 - **Reads and writes:** `setAll`, `setEmpty`, `setRaw`, `remove`, `dump`, `getStrings`
 - **Read results:** `file.report`, `ReadReport.isClean` / `summary()`, `MissingElementException`, `DicomParseException`, `DicomWriteException`, `DimseFailureException`
 - **Network:** `RetrieveProgress.total` / `status`, `PresentationContexts.*`, `retrieveStorageClasses`, `timeouts`, `trace`
-- **Pixels:** `DisplayBuffer.rgba` / `width` / `height`
+- **Pixels:** `DisplayBuffer.gray` / `toRgba()` / `width` / `height` *(amended: S8)*
+- **Added in M1 planning (2026-10-17):** `Dataset.fromBytes` / `toBytes` (S7), `ds.transferSyntax`, `FileMetaInformation.forInstance` / `toHeaderBytes()`, `ReceivedInstance.sourceAeTitle` / `fileMeta`, `PresentationContexts.commonStorage`
 - **DICOMweb:** `retry`
 
 **Not covered:** the DICOMweb surface beyond its names (P1). It gets its own journey once it is scheduled.

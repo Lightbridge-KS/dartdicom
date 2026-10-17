@@ -73,6 +73,8 @@ These are the places where two inputs disagree, or where a single input disagree
 | F35 | Surface §4.2 (`Dataset()` built in memory and filled with `set`) **×** data §3.4 (charset rules cover *decoding* only) | **Decided 2026-10-16: the write fails.** Text that the dataset's declared charset can't encode, or non-ASCII text with no (0008,0005) at all, raises a `DicomWriteException`. The message names the tag and says how to fix it (`set DicomTags.specificCharacterSet to 'ISO_IR 192'`). Nothing is added silently. This lands in `write/`, and I-27 checks it. *(Data §3.4 amended.)* |
 | F36 | Surface §2 (family list getters such as `getInts(Tag)` for untyped tags) **×** DA1: `One` and `Many` implement `Tag`, so `getInts(DicomTags.patientName)` compiles | Accepted, because a subtype can't be excluded. At runtime it throws an `ArgumentError` naming the tag's typed accessor (`use ds.get(DicomTags.patientName)`). |
 | F37 | PRD C-03 (generated constants named `Tags`) **×** `package:test`, which also exports `Tags` (found in M0: `ambiguous_import` in any test importing both) | Renamed to `DicomTags` (surface S6). The generator emits `abstract final class DicomTags`. *(PRD C-03, design and surface examples amended.)* |
+| F38 | §3 tree (`DicomFile`, `FileMetaInformation` in `dataset/`) and surface `Dataset.fromBytes` **×** I-5 (`dataset/` imports nothing from `read/` or `write/`): `fromBytes`/`toBytes` must call the parser and writer (found planning M1) | `DicomFile` and `FileMetaInformation` move to `lib/src/file/`, which may import `read/` and `write/`; meta derivation (I-17) lands there too. `read/` and `write/` see only `Dataset` and never import `file/`. **Decided 2026-10-17:** net's raw codec is `Dataset.fromBytes(bytes, transferSyntax:)` / `ds.toBytes(transferSyntax:)`, so I-5 is narrowed: only `dataset/dataset.dart` may import them. Rejected: a `DatasetCodec` value. |
+| F39 | Data §4.2 (storing costs no parsing) and §6 (`DirectorySink` lays files out by Study and Series UID) **×** the wire: a C-STORE-RQ command carries only the SOP Class and Instance UIDs | `DirectorySink` parses the received bytes' header (`stopBeforePixels`) to build the path, then stores the bytes unchanged. A UID that fails `^[0-9.]+$`, or a sink exception, gets a failure C-STORE-RSP (`0xC211`, as pynetdicom does); the retrieve carries on. *(Data §4.2 amended.)* |
 
 **Verb → action → field.** Each verb the first consumer needs, traced to the action that performs it and the field it lands on:
 
@@ -80,8 +82,8 @@ These are the places where two inputs disagree, or where a single input disagree
 |---|---|---|
 | query | `Association.sendCFind` | identifier `Dataset` |
 | retrieve | `Association.sendCGet` / `.sendCMove` | `RetrieveProgress` {remaining, completed, failed, warning}, from command elements (0000,1020)–(0000,1023) |
-| save | `InstanceSink.accept` | `ReceivedInstance` {SOP class, SOP instance, transfer syntax, bytes, calling AE} |
-| store | `DirectorySink.accept` | a Part 10 file: generated meta + the received bytes unchanged, at a UID-only path (F25, F20) |
+| save | `InstanceSink.accept` | `ReceivedInstance` {SOP class, SOP instance, transfer syntax, bytes, source AE title, file meta} *(amended: "calling AE" was wrong for C-GET, where the peer is the called AE; the value is (0002,0016))* |
+| store | `DirectorySink.accept` | a Part 10 file: `fileMeta.toHeaderBytes()` + the received bytes unchanged, at a UID-only path (F25, F20, F39) |
 | display | `ds.pixels.frame(i).toDisplay(window)` | `DisplayBuffer` |
 | inspect | `Dataset.get` / `require` / `getAll` (typed tags), list-only getters for untyped tags / dump | element values |
 | modify | `Dataset.set` / `setAll` / `setEmpty` / `remove` / `setRaw` (S1) | `DataElement`; `setEmpty` is a zero-length element |
@@ -124,9 +126,10 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 │   ├── lib/src/vr/               Vr enum; per-VR converters and writers
 │   ├── lib/src/charset/          CharsetResolver; single-byte codecs
 │   ├── lib/src/errors.dart       DicomException (open base) + the sealed DicomDataException tree (F30)
-│   ├── lib/src/dataset/          DicomFile, FileMetaInformation, Dataset, Element, Sequence, ReadReport (F28)
+│   ├── lib/src/dataset/          Dataset (+ its fromBytes/toBytes entry points, F38), DataElement, Sequence, ReadReport (F28)
+│   ├── lib/src/file/             DicomFile, FileMetaInformation, file meta derivation (F38) *(amended)*
 │   ├── lib/src/read/             ByteSource, SourceOpener, Parser, ReadOptions, repairs, deflate
-│   ├── lib/src/write/            Writer, WriteOptions, file meta generation
+│   ├── lib/src/write/            Writer, WriteOptions
 │   ├── lib/src/redact/           Redactor; dump
 │   ├── lib/src/io/               FileSource, ZLibDeflateCodec: the only dart:io in this package
 │   ├── tool/gen_dictionary/      source.dart (release pin + SHA-256) · parse.dart · emit.dart · value_types.dart (I-19) · naming.dart (S4) → lib/src/**/*.g.dart (committed)
@@ -187,7 +190,7 @@ Rows import columns. ✅ allowed · ❌ forbidden · — not applicable.
 
 Two rules *inside* packages:
 
-- In core, `dataset/` imports nothing from `read/` or `write/` (F13).
+- In core, `dataset/` imports nothing from `read/` or `write/` (F13), except `dataset/dataset.dart` for `Dataset.fromBytes` / `toBytes` (F38). `read/` and `write/` never import `file/`. *(amended)*
 - In net, layers import downward only: association → dimse/acse → dul → pdu.
 
 **Enforcement.** A layering rule that is only written down is already broken, so each rule has a tool:
@@ -245,6 +248,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Update the pydicom mapping or agent docs | the package's `README.md` and `llms.txt` (the snippets must compile, I-25) |
 | Change a VR's Dart type (the data §3.4 contract): a **major** version | the contract table in `dartdicom/tool/gen_dictionary/`, plus `vr/` |
 | Change how values are byte-swapped when byte order changes | `dartdicom/lib/src/write/` |
+| Change how file meta is derived or validated (I-17), or the implementation UID and version name | `dartdicom/lib/src/file/`, `dartdicom/lib/src/uid/implementation.dart` |
 | Change the folder layout or naming of stored files | `dartdicom_net/lib/src/sink/` |
 | Add a character set | `dartdicom/lib/src/charset/` |
 | Add a lenient-read repair | `dartdicom/lib/src/read/repairs.dart` (and its `ReadReport` kind) |
@@ -280,7 +284,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-2 ★ | Core tests pass compiled to JS, and core compiles to Wasm | CI `dart test -p chrome`, `dart compile wasm` |
 | I-3 ★ | Each package's `dependencies` are within its row of §4 | `scripts/check_deps.sh` in CI |
 | I-4 ★ | No import of an undeclared package | `depend_on_referenced_packages` lint |
-| I-5 ★ | `dataset/` imports nothing from `read/` or `write/` | architecture test |
+| I-5 ★ | `dataset/` imports nothing from `read/` or `write/`, except `dataset/dataset.dart` (F38); `read/` and `write/` import nothing from `file/` *(amended)* | architecture test |
 | I-6 ★ | In net, only `transport/`, `scp/` and `sink/` import `dart:io` | `dartdicom_net/test/architecture_test.dart` |
 | I-7 ★ | No top-level mutable variables (`var`, `late`, non-const `final`) in any `lib/` | architecture test (grep) |
 | I-8 ★ | Generated files match the generator's output for the pinned release | `dart run tool/gen_dictionary/main.dart --check` in `.github/workflows/generated.yml` (on generator or output changes; the release XML is cached) |
@@ -348,3 +352,5 @@ Structural amendments are applied in place and marked *(amended)*. Behavioral on
 | F30: an open exception base plus a sealed subtree per package | design §5.2, surface §5 | structure | applied |
 | F33: a final Failure on a stream is a stream error | design D3 and §5.2 | behavior | raised as S5; decided 2026-10-16; applied |
 | F35: how to write non-ASCII text when no Specific Character Set is present | data §3.4, surface §4.2 | **behavior** | decided 2026-10-16: the write fails, with a message saying how to fix it. Rejected: adding ISO_IR 192 automatically. Applied. |
+| F38: `file/` for `DicomFile`; `Dataset.fromBytes` / `toBytes`; I-5 narrowed | this doc §3, §4, I-5; surface §2 | **behavior** (public API) | decided 2026-10-17; applied |
+| F39: `DirectorySink` parses the header for its path | data §4.2 | structure | applied |
