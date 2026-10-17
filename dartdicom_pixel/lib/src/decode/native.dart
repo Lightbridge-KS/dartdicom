@@ -36,6 +36,20 @@ PixelArray decodeNativeFrame(Dataset ds, PixelModule m, int index) {
   final unused = m.bitsAllocated - m.bitsStored;
 
   if (m.bitsAllocated == 8) {
+    // 8-bit data in OW, Big Endian: the bytes are in 16-bit words, so each
+    // pair is swapped (pydicom's be_swap_ow), across the whole even-length
+    // value: an odd image's last pixel comes from its padding word.
+    final swapPairs =
+        !ts.littleEndian && ds.element(DicomTags.pixelData)?.vr == Vr.OW;
+    if (swapPairs) {
+      final out = m.signed ? Int8List(count) : Uint8List(count);
+      for (var i = 0; i < count; i++) {
+        final j = start + (i ^ 1);
+        out[i] = _correct(
+            bytes[j < bytes.length ? j : start + i], m.bitsStored, m.signed);
+      }
+      return PixelArray(out, m);
+    }
     if (unused == 0) {
       return PixelArray(
           m.signed

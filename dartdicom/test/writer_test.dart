@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
+import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
 
 DicomFile _fixture(String path) =>
@@ -242,6 +243,63 @@ void main() {
         ..fillRange(bytes.length - 40, bytes.length, 0xFF);
       expect(() => DicomFile.fromBytes(broken),
           throwsA(isA<DicomParseException>()));
+    });
+  });
+
+  group('across byte orders (C-11, I-18)', () {
+    test('swapWords reverses each word, leaving a ragged tail', () {
+      final b = Uint8List.fromList([1, 2, 3, 4, 5, 6, 7]);
+      expect(swapWords(b, 2), [2, 1, 4, 3, 6, 5, 7]);
+      expect(swapWords(b, 4), [4, 3, 2, 1, 5, 6, 7]);
+      expect(swapWords(b, 1), same(b));
+    });
+
+    test('writing Big Endian is refused, naming the fix', () {
+      final ds = Dataset()..set(DicomTags.patientId, 'P');
+      expect(
+          () =>
+              ds.toBytes(transferSyntax: TransferSyntaxes.explicitVrBigEndian),
+          throwsA(isA<DicomWriteException>().having((e) => e.message, 'message',
+              contains('explicitVrLittleEndian'))));
+    });
+
+    test('Implicit, Explicit and Deflated re-encode each other', () {
+      final file = _fixture('synthetic/ct_signed_explicit_le.dcm');
+      for (final ts in [
+        TransferSyntaxes.implicitVrLittleEndian,
+        TransferSyntaxes.deflatedExplicitVrLittleEndian,
+        TransferSyntaxes.explicitVrLittleEndian,
+      ]) {
+        final back = DicomFile.fromBytes(file.toBytes(
+            options: WriteOptions(
+                transferSyntax: ts, deflateCodec: const ZLibDeflateCodec())));
+        expect(back.meta.transferSyntaxUid, ts);
+        expect(back.dataset.require(DicomTags.pixelData),
+            file.dataset.require(DicomTags.pixelData));
+        expect(back.dataset.getAll(DicomTags.windowCenter),
+            file.dataset.getAll(DicomTags.windowCenter));
+      }
+    });
+  });
+
+  group('group lengths (retired) are written only while they hold', () {
+    Uint8List write(Dataset ds) =>
+        ds.toBytes(transferSyntax: TransferSyntaxes.explicitVrLittleEndian);
+    const groupLength = Tag.of(0x0008, 0x0000);
+
+    test('a correct one is kept, a stale one dropped', () {
+      final ds = Dataset()..set(DicomTags.modality, 'CT');
+      // (0008,0060) CS 'CT' is 8 + 2 = 10 bytes in Explicit VR.
+      ds.setRaw(groupLength, Vr.UL, [10]);
+      final kept = Dataset.fromBytes(write(ds),
+          transferSyntax: TransferSyntaxes.explicitVrLittleEndian);
+      expect(kept.contains(groupLength), isTrue);
+
+      ds.set(DicomTags.studyDate, '20260101');
+      final dropped = Dataset.fromBytes(write(ds),
+          transferSyntax: TransferSyntaxes.explicitVrLittleEndian);
+      expect(dropped.contains(groupLength), isFalse);
+      expect(dropped.get(DicomTags.studyDate), '20260101');
     });
   });
 }

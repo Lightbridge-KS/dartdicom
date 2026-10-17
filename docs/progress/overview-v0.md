@@ -102,8 +102,8 @@ Each step ends with the dry and floor gates green, and `just live` after a read 
   - `golden.py` hardened (per-element errors, raw forms, stamps, `force`); `fixtures golden --corpus`.
   - A shared comparator with named tolerances.
   - `corpus_test.dart` as a ratchet over `corpus_expected.yaml`; the CI `corpus` job.
-- [x] **4a. Deflated.** The puff.c-style inflate matched zlib on the first run (stored, fixed and dynamic blocks, levels 0–9); both Deflated fixtures agree with pydicom element for element and pixel for pixel. Pure-Dart inflate with a size cap; `ZLibDeflateCodec`; inflate in both parse entry points.
-- [ ] **4b. Big Endian and the cross-syntax writer.**
+- [x] **4a. Deflated** (`0d79809`). The puff.c-style inflate matched zlib on the first run (stored, fixed and dynamic blocks, levels 0–9); both Deflated fixtures agree with pydicom element for element and pixel for pixel. Pure-Dart inflate with a size cap; `ZLibDeflateCodec`; inflate in both parse entry points.
+- [x] **4b. Big Endian and the cross-syntax writer.** All 11 Big Endian corpus files agree with pydicom; the corpus ratchet is down to 17.
   - `WriteOptions`; the copy rule by VR; the swap rule (OW Pixel Data by Bits Allocated, 8-bit included).
   - Stale group lengths dropped.
   - Writing BE is refused with the fix named.
@@ -183,6 +183,8 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| Real files carry stale group lengths: pydicom-data's `693_UNCI.dcm` says (7FE0,0000) = 105,406 for 524 KB of uncompressed Pixel Data, left over from its compressed sibling. The writer drops a group length that no longer equals its group. | `corpus_test.dart`, 2026-10-17 |
+| pydicom decodes 8-bit OW Big Endian Pixel Data by swapping 16-bit words across the whole padded value, so an odd image's last pixel comes from the padding word (`SC_rgb_small_odd_big_endian.dcm`). `dartdicom_pixel` matches it. | pydicom 3.0.2, 2026-10-17 |
 | A header-only read of an 8 MiB file through `FileSource` reads one 64 KiB window, and so does a full read with the Pixel Data deferred. A deferred `Dataset` moves to another isolate and loads its value there (I-14). Async and sync reads agree on every fixture in all three modes. | `file_source_test.dart`, 2026-10-17 |
 | dart2js's `Random.secure()` throws under Node (the SDK runtime calls the `crypto` getter with the wrong receiver), but works in Chrome and on the VM. `Uid.generate`'s tests skip Node; Node is not a target. | `uid_test.dart` on node and chrome, Node 26, 2026-10-17 |
 | Native frames decoded by `dartdicom_pixel` match pydicom 3.0.2's `pixel_array` (sha256, after `correct_unused_bits`) for all 15 native Little Endian fixtures with 8 or 16 bits allocated, multi-frame and interleaved RGB included. An aligned host-order frame is a zero-copy view. | `dartdicom_pixel/test/vs_pydicom_test.dart`, 2026-10-17 |

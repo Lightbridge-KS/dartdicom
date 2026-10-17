@@ -100,11 +100,10 @@ Dataset parseDataset(ByteSource source, TransferSyntax ts, ReadOptions options,
 
 TransferSyntax _supported(Uid uid, int offset) {
   final ts = TransferSyntax.of(uid);
-  if (ts == null || !ts.littleEndian) {
+  if (ts == null) {
     throw DicomParseException(
-        'transfer syntax ${uid.value} is not supported for reading yet '
-        '(supported: Implicit, Explicit and Deflated Explicit VR Little '
-        'Endian, and the encapsulated forms)',
+        'transfer syntax ${uid.value} is not a registered one, so the data '
+        'cannot be decoded',
         offset: offset);
   }
   return ts;

@@ -70,9 +70,17 @@ final class DicomFile {
   /// a [DicomWriteException] if the meta and the dataset disagree on a SOP
   /// UID (I-17), or if a value can't be encoded; nothing is written then.
   Uint8List toBytes({WriteOptions options = const WriteOptions()}) {
+    final requested = options.transferSyntax;
     final declared = meta.transferSyntaxUid;
-    final ts = (declared == null ? null : TransferSyntax.of(declared)) ??
-        TransferSyntax.explicitVrLittleEndian;
+    final TransferSyntax ts;
+    if (requested != null) {
+      ts = TransferSyntax.of(requested) ??
+          (throw ArgumentError.value(requested.value, 'transferSyntax',
+              'is not a registered transfer syntax'));
+    } else {
+      ts = (declared == null ? null : TransferSyntax.of(declared)) ??
+          TransferSyntax.explicitVrLittleEndian;
+    }
     final body = encodeDataset(dataset, ts, deflateCodec: options.deflateCodec);
     return (BytesBuilder(copy: false)
           ..add(_derivedMeta(ts).toHeaderBytes(preamble: preamble))

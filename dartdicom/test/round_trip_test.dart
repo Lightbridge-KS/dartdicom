@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
+import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
 
 const _zlib = WriteOptions(deflateCodec: ZLibDeflateCodec());
@@ -64,6 +65,31 @@ void main() {
       continue;
     }
 
+    // F41: Big Endian is read-only, so I-10 doesn't apply. Writing it is
+    // refused with the fix named, and the Little Endian rewrite reads back
+    // the same elements.
+    if (file.meta.transferSyntaxUid == TransferSyntaxes.explicitVrBigEndian) {
+      test('$name (Big Endian) is refused as written, and rewrites as LE', () {
+        expect(
+            file.toBytes,
+            throwsA(isA<DicomWriteException>().having((e) => e.message,
+                'message', contains('explicitVrLittleEndian'))));
+        final le = DicomFile.fromBytes(file.toBytes(
+            options: const WriteOptions(
+                transferSyntax: TransferSyntaxes.explicitVrLittleEndian)));
+        expect(
+            le.meta.transferSyntaxUid, TransferSyntaxes.explicitVrLittleEndian);
+        // Everything decodes the same; OW Pixel Data words swap (I-18).
+        expect(_flatten(le.dataset, skip: DicomTags.pixelData),
+            _flatten(file.dataset, skip: DicomTags.pixelData));
+        final be = file.dataset.require(DicomTags.pixelData);
+        final int bitsAllocated = file.dataset.require(DicomTags.bitsAllocated);
+        expect(le.dataset.require(DicomTags.pixelData),
+            swapWords(be, bitsAllocated > 16 ? bitsAllocated ~/ 8 : 2));
+      });
+      continue;
+    }
+
     test('$name round-trips byte for byte', () {
       _expectSame(file, file.toBytes(options: _zlib), bytes);
     });
@@ -83,3 +109,16 @@ void main() {
     });
   }
 }
+
+/// Every element, recursively, as [tag, VR, value] for comparison.
+List<Object> _flatten(Dataset ds, {Tag? skip}) => [
+      for (final e in ds.elements.where((e) => e.tag != skip))
+        [
+          e.tag.value,
+          e.vr.code,
+          switch (e.value) {
+            final Sequence s => [for (final item in s) _flatten(item)],
+            final Object v => v,
+          },
+        ],
+    ];

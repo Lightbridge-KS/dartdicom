@@ -111,6 +111,9 @@ void main() {
 /// transfer syntax is written back, and the meta agrees with the dataset.
 /// Returns why it failed, or null.
 String? _roundTrip(DicomFile file, List<int> bytes) {
+  if (file.meta.transferSyntaxUid == TransferSyntaxes.explicitVrBigEndian) {
+    return null; // read-only (C-08): F41 exempts it
+  }
   final metaUid = file.meta.mediaStorageSopInstanceUid?.value;
   final datasetUid = file.dataset.get(DicomTags.sopInstanceUid);
   if (metaUid != null && datasetUid != null && metaUid != datasetUid) {

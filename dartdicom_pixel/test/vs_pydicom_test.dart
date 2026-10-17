@@ -26,7 +26,7 @@ void main() {
         jsonDecode(golden.readAsStringSync()) as Map<String, Object?>;
     final pixels = record['pixels'] as Map<String, Object?>?;
     final ts = TransferSyntax.of(Uid(record['transfer_syntax']! as String));
-    if (pixels == null || ts == null || !ts.littleEndian || ts.encapsulated) {
+    if (pixels == null || ts == null || ts.encapsulated) {
       continue;
     }
     final path = record['file']! as String;
@@ -54,6 +54,20 @@ void main() {
         out.add(data.buffer.asUint8List());
       }
       expect(sha256.convert(out.takeBytes()).toString(), pixels['sha256']);
+      if (!ts.littleEndian) {
+        // I-18 (in-process): rewritten as Little Endian, the frames decode to
+        // the same values.
+        final le = DicomFile.fromBytes(DicomFile.fromBytes(
+                    File('../fixtures/data/$path').readAsBytesSync())
+                .toBytes(
+                    options: const WriteOptions(
+                        transferSyntax:
+                            TransferSyntaxes.explicitVrLittleEndian)))
+            .dataset;
+        for (var i = 0; i < ds.pixels.numberOfFrames; i++) {
+          expect(le.pixels.frame(i).values, ds.pixels.frame(i).values);
+        }
+      }
       expect(
           ds.pixels.frame(0).values,
           switch ((m.bitsAllocated, m.signed)) {

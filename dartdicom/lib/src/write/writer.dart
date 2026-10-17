@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../dataset/dataset.dart';
@@ -27,7 +28,9 @@ Uint8List encodeDataset(Dataset ds, TransferSyntax ts,
     {List<String> inheritedCharset = const [], DeflateCodec? deflateCodec}) {
   if (!ts.littleEndian) {
     throw DicomWriteException(
-        'transfer syntax ${ts.uid.value} is not supported for writing yet');
+        'Explicit VR Big Endian is retired and read-only (PRD C-08); write '
+        'it as Explicit VR Little Endian, e.g. WriteOptions(transferSyntax: '
+        'TransferSyntaxes.explicitVrLittleEndian)');
   }
   if (isPartial(ds)) {
     throw DicomWriteException('the dataset was read only in part '
@@ -73,18 +76,44 @@ final class _Writer {
         ? null
         : TransferSyntax.of(ds.transferSyntax!);
     var charset = inherited;
-    for (final element in ds.elements) {
-      if (element.tag.value == _specificCharacterSet) {
-        charset = element.value as List<String>;
+    final elements = ds.elements.toList();
+    // Group by group: a group length (gggg,0000) is retired, and goes stale
+    // when its group is re-encoded or edited, so it is written only if it
+    // still equals the length of its group as written.
+    for (var i = 0; i < elements.length;) {
+      final group = elements[i].tag.group;
+      var end = i;
+      while (end < elements.length && elements[end].tag.group == group) {
+        end++;
       }
-      _writeElement(out, element, charset, source);
+      final groupLength = elements[i].tag.element == 0 ? elements[i] : null;
+      final body = BytesBuilder(copy: false);
+      for (final element
+          in elements.sublist(groupLength == null ? i : i + 1, end)) {
+        if (element.tag.value == _specificCharacterSet &&
+            element.value is List<String>) {
+          charset = element.value as List<String>;
+        }
+        _writeElement(body, element, charset, source, ds);
+      }
+      if (groupLength != null && _holds(groupLength, body.length)) {
+        _writeElement(out, groupLength, charset, source, ds);
+      }
+      out.add(body.takeBytes());
+      i = end;
     }
+  }
+
+  /// Whether [groupLength]'s value is [length].
+  bool _holds(DataElement groupLength, int length) {
+    final value = groupLength.value;
+    return value is List<int> && value.length == 1 && value.single == length;
   }
 
   /// Writes [element], read from [source] (null if it was never read): its
   /// bytes as read when [_canCopy] allows, otherwise its value re-encoded.
   void _writeElement(BytesBuilder out, DataElement element,
-      List<String> charset, TransferSyntax? source) {
+      List<String> charset, TransferSyntax? source, Dataset ds) {
     final raw = rawValueOf(element);
     if (element.vr == Vr.SQ) {
       // A sequence keeps no bytes of its own: its items are written, each
@@ -102,20 +131,28 @@ final class _Writer {
       out.add(raw.bytes);
       return;
     }
-    final value = encodeValue(element.tag, element.vr, element.value,
+    var value = element.value;
+    if (raw != null &&
+        source != null &&
+        source.littleEndian != ts.littleEndian &&
+        value is Uint8List) {
+      value = _swap(value, _wordSize(element, ds));
+    }
+    final encoded = encodeValue(element.tag, element.vr, value,
         littleEndian: ts.littleEndian, specificCharacterSet: charset);
-    _writeHeader(out, element, value.length);
-    out.add(value);
+    _writeHeader(out, element, encoded.length);
+    out.add(encoded);
   }
 
   /// Whether [raw], the bytes of [element] as read from [source], mean the
   /// same in [ts] and can be written back unchanged (I-10).
   bool _canCopy(DataElement element, RawValue raw, List<String> charset,
       TransferSyntax? source) {
-    final sameEndian = source != null && source.littleEndian == ts.littleEndian;
+    if (source == null) return false;
+    final sameEndian = source.littleEndian == ts.littleEndian;
     final sameEncoding = sameEndian && source.explicitVr == ts.explicitVr;
     final vr = element.vr;
-    return sameEndian &&
+    return (sameEndian || !_byteOrdered.contains(vr)) &&
         (!isCharsetVr(vr) || _sameTerms(raw.specificCharacterSet, charset)) &&
         (!raw.undefinedLength || sameEncoding);
   }
@@ -190,6 +227,43 @@ final class _Writer {
         ..setUint32(4, length, endian))
       .buffer
       .asUint8List();
+}
+
+/// VRs whose bytes depend on the byte order: binary numbers and word data.
+/// Text, OB and UN read the same either way.
+const _byteOrdered = {
+  Vr.US, Vr.SS, Vr.UL, Vr.SL, Vr.SV, Vr.UV, Vr.FL, Vr.FD, Vr.AT, //
+  Vr.OW, Vr.OF, Vr.OL, Vr.OD, Vr.OV,
+};
+
+/// The word size [element]'s bytes swap by when the byte order changes
+/// (I-18): OW Pixel Data by its Bits Allocated (8-bit OW swaps in pairs, as
+/// pydicom's `be_swap_ow`), other OW by 2, OF/OL by 4, OD/OV by 8; OB and
+/// UN not at all (1).
+int _wordSize(DataElement element, Dataset ds) => switch (element.vr) {
+      Vr.OW when element.tag == DicomTags.pixelData =>
+        math.max(2, (ds.get(DicomTags.bitsAllocated) ?? 16) ~/ 8),
+      Vr.OW => 2,
+      Vr.OF || Vr.OL => 4,
+      Vr.OD || Vr.OV => 8,
+      _ => 1,
+    };
+
+/// [bytes] with each [size]-byte word reversed (a copy; [size] 1 returns
+/// [bytes] as is).
+Uint8List swapWords(Uint8List bytes, int size) => _swap(bytes, size);
+
+Uint8List _swap(Uint8List bytes, int size) {
+  if (size <= 1) return bytes;
+  final out = Uint8List(bytes.length);
+  final whole = bytes.length - bytes.length % size;
+  for (var at = 0; at < whole; at += size) {
+    for (var k = 0; k < size; k++) {
+      out[at + k] = bytes[at + size - 1 - k];
+    }
+  }
+  out.setRange(whole, bytes.length, bytes, whole);
+  return out;
 }
 
 bool _sameTerms(List<String> a, List<String> b) {

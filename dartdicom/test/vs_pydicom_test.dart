@@ -12,12 +12,8 @@ import 'package:test/test.dart';
 
 import 'support/golden.dart';
 
-/// What we read so far: every Little Endian syntax (Implicit, Explicit,
-/// Deflated, and the encapsulated ones); not Big Endian yet.
-bool _readable(String uid) {
-  final ts = TransferSyntax.of(Uid(uid));
-  return ts != null && ts.littleEndian;
-}
+/// Every registered transfer syntax reads (C-08).
+bool _readable(String uid) => TransferSyntax.of(Uid(uid)) != null;
 
 void main() {
   final goldens = Directory('../fixtures/data/golden')
