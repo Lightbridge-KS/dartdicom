@@ -240,6 +240,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Task | File (one obvious place) |
 |---|---|
 | Add a developer workflow | a `scripts/` script, plus a `justfile` recipe that calls it |
+| Accept a corpus file as a known failure, or remove a fixed one | `dartdicom/test/corpus_expected.txt` (a ratchet: each line has a reason) |
 | Add a synthetic fixture scenario | a `@scenario` function in `fixtures/src/dartdicom_fixtures/scenarios.py`, then `just fixtures` |
 | Bump the dev Dart SDK | `mise use dart@<version>` (rewrites `mise.toml`), plus the local `.vscode/settings.json` `dart.sdkPath` |
 | Raise the package floor | `environment: sdk:` in every member's `pubspec.yaml`, plus the CI floor job's version |

@@ -114,6 +114,7 @@ fixtures-check:
 fixtures-list:
     cd fixtures && uv run --locked fixtures list
 
-# Fetch the large corpora (pydicom-data, …) into the user cache.
+# Fetch the large corpora (pydicom-data, …) into the user cache, and export pydicom's reading of them.
 corpus:
     cd fixtures && uv run --locked fixtures corpus fetch
+    cd fixtures && uv run --locked fixtures golden --corpus

@@ -93,12 +93,12 @@ Each step ends with the dry and floor gates green, and `just live` after a read 
   - The untyped getters (F36), `ds.element(tag)`, `setRaw`, `privateBlock`, `Uid.generate` / `isValid`.
   - The writer refuses to change between encapsulated and native syntaxes while Pixel Data is present.
   - I-23's property test.
-- [x] **2. Sources, random access, deferral.** Sequences keep no raw span now: the writer rebuilds them from their items in the length forms read, so a file source never copies nested bytes twice.
+- [x] **2. Sources, random access, deferral** (`3062462`). Sequences keep no raw span now: the writer rebuilds them from their items in the length forms read, so a file source never copies nested bytes twice.
   - `source/` (a leaf) and `DicomFile.fromSource`.
   - `FileSource` / `FileSourceOpener`, `SourceChangedException` (DA2), `deferSize`, I-14.
   - D1's async prefix read with geometric growth; a nesting-depth limit.
   - Writing a partial read is refused.
-- [ ] **3. Corpus census.**
+- [x] **3. Corpus census.** First run: 85 files, 68 compared, 25 failing, each scheduled in `dartdicom/test/corpus_expected.txt`. The census found a crash, a `TypeError` on a UN (0008,0005); it is guarded now and repaired in step 5.
   - `golden.py` hardened (per-element errors, raw forms, stamps, `force`); `fixtures golden --corpus`.
   - A shared comparator with named tolerances.
   - `corpus_test.dart` as a ratchet over `corpus_expected.yaml`; the CI `corpus` job.

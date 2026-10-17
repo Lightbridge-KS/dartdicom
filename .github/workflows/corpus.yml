@@ -1,0 +1,43 @@
+# I-11 and I-10 on the pinned pydicom-data corpus (M2's exit): pydicom's
+# golden reading of every file, then dartdicom's, compared by
+# dartdicom/test/corpus_test.dart (a ratchet over corpus_expected.txt).
+name: corpus
+
+on:
+  push:
+    branches: [main]
+    paths: [dartdicom/**, fixtures/**, .github/workflows/corpus.yml]
+  pull_request:
+    paths: [dartdicom/**, fixtures/**, .github/workflows/corpus.yml]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    name: corpus (pydicom-data)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.1.1 # installs the Dart from mise.toml
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: cache the corpus checkout
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/dartdicom/corpus
+          key: corpus-${{ hashFiles('fixtures/src/dartdicom_fixtures/corpus.py') }}
+      - run: dart pub get
+      - name: fetch the corpus and export pydicom's reading of it
+        working-directory: fixtures
+        run: |
+          uv run --locked fixtures corpus fetch
+          uv run --locked fixtures golden --corpus
+      - name: compare (a missing corpus fails here)
+        working-directory: dartdicom
+        run: dart test test/corpus_test.dart
+        env:
+          DARTDICOM_CORPUS_REQUIRED: "1"

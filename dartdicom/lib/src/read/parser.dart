@@ -168,7 +168,9 @@ final class _Parser {
       elements.add(element);
 
       switch (tag) {
-        case _specificCharacterSet:
+        // Written as UN, (0008,0005) holds bytes: step 5's repair gives it
+        // its dictionary VR; until then the default repertoire stands.
+        case _specificCharacterSet when element.value is List<String>:
           context.charset = element.value as List<String>;
         case _bitsAllocated when length >= 2:
           context.bitsAllocated = _u16Of(raw.bytes);

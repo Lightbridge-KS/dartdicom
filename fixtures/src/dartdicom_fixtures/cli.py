@@ -11,7 +11,7 @@ from typing import Annotated
 import typer
 
 from . import corpus, curated, golden, pydicom_dictionary, scenarios
-from .paths import DATA, GOLDEN, PROVENANCE, PYDICOM, SYNTHETIC
+from .paths import DATA, GOLDEN, PROVENANCE, PYDICOM, SYNTHETIC, cache_root
 from .provenance import Row, render
 
 app = typer.Typer(
@@ -58,9 +58,42 @@ def build() -> None:
     typer.echo(f"wrote {len(rows)} fixtures and {PROVENANCE}")
 
 
+def corpus_golden_into(name: str) -> int:
+    """Writes golden JSON for every file of corpus `name` into the cache."""
+    root = corpus.corpus_dir() / name
+    if not (root / ".git").exists():
+        raise typer.BadParameter(
+            f"corpus {name} isn't fetched; run `fixtures corpus fetch`"
+        )
+    stamps = {
+        "corpus": f"{name}@{corpus.CORPORA[name].commit[:7]}",
+        "golden_py": golden.source_hash(),
+    }
+    target_root = cache_root() / GOLDEN / name
+    sources = sorted(p for p in root.rglob("*.dcm") if ".git" not in p.parts)
+    for src in sources:
+        target = target_root / src.relative_to(root).with_suffix(".json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(golden.golden_or_error(src, root, **stamps))
+    return len(sources)
+
+
 @app.command("golden")
-def golden_cmd() -> None:
-    """Regenerate pydicom's golden JSON for every fixture."""
+def golden_cmd(
+    corpora: Annotated[
+        bool,
+        typer.Option(
+            "--corpus",
+            help="Export the cached corpora into the cache instead of the fixtures.",
+        ),
+    ] = False,
+) -> None:
+    """Regenerate pydicom's golden JSON for every fixture (or corpus file)."""
+    if corpora:
+        for name in corpus.CORPORA:
+            count = corpus_golden_into(name)
+            typer.echo(f"wrote {count} golden files for {name} into the cache")
+        return
     typer.echo(f"wrote {golden_into(DATA)} golden files")
 
 

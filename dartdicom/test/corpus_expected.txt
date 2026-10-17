@@ -1,0 +1,35 @@
+# pydicom-data files that still fail corpus_test.dart, each with the reason
+# and the M2 step that fixes it. The test fails if an unlisted file fails or a
+# listed one passes, so this list only shrinks (docs/progress/overview-v0.md).
+
+# Step 4b: Explicit VR Big Endian isn't read yet.
+data_store/data/OBXXXX1A_expb.dcm  # Big Endian
+data_store/data/OBXXXX1A_expb_2frame.dcm  # Big Endian
+data_store/data/SC_rgb_expb.dcm  # Big Endian
+data_store/data/SC_rgb_expb_16bit.dcm  # Big Endian
+data_store/data/SC_rgb_expb_16bit_2frame.dcm  # Big Endian
+data_store/data/SC_rgb_expb_2frame.dcm  # Big Endian
+data_store/data/SC_rgb_expb_32bit.dcm  # Big Endian
+data_store/data/SC_rgb_expb_32bit_2frame.dcm  # Big Endian
+data_store/data/emri_small_big_endian.dcm  # Big Endian
+data_store/data/gdcm-US-ALOKA-16_big.dcm  # Big Endian
+data_store/data/liver_expb.dcm  # Big Endian
+
+# Step 4c: the writer adds an Implementation Version Name (Type 3) that the
+# meta omits; only a missing Implementation Class UID should fill the pair.
+data_store/data/SC_rgb.dcm  # I-10: version name added
+data_store/data/SC_rgb_16bit.dcm  # I-10: version name added
+data_store/data/SC_rgb_16bit_2frame.dcm  # I-10: version name added
+data_store/data/SC_rgb_2frame.dcm  # I-10: version name added
+data_store/data/SC_rgb_32bit.dcm  # I-10: version name added
+data_store/data/SC_rgb_32bit_2frame.dcm  # I-10: version name added
+
+# Step 5: lenient reading (C-10).
+data_store/data/JLSL_RGB_ILV0.dcm  # force: meta without a preamble
+data_store/data/JLSL_RGB_ILV1.dcm  # force: meta without a preamble
+data_store/data/JLSL_RGB_ILV2.dcm  # force: meta without a preamble
+data_store/data/JLSN_RGB_ILV0.dcm  # force: meta without a preamble
+data_store/data/OT-PAL-8-face.dcm  # force: a raw Implicit VR dataset
+data_store/data/bad_sequence.dcm  # UN with an undefined length is an SQ
+data_store/data/emri_small_jpeg_2k_lossless_too_short.dcm  # truncated: partial dataset
+data_store/data/explicit_VR-UN.dcm  # UN with a known VR takes the dictionary's
