@@ -103,7 +103,7 @@ flowchart TD
 | `ds.require(One<T>)` → `T` | required single-value read; throws if absent | C-06, DA1 |
 | `ds.getAll(Many<T>)` → `List<T>` | multi-value read; empty if absent | DA1 |
 | `ds.getStrings(Tag)` and the other family list getters | reads for untyped tags (private tags, keyword lookups) | DA1 |
-| `ds.set(One<T>, T)` / `ds.setAll(Many<T>, List<T>)` / `ds.setEmpty(tag)` / `ds.remove(tag)` | modify (S1) | C-06 |
+| `ds.set(One<T>, T)` / `ds.setAll(Many<T>, List<T>)` / `ds.setEmpty(tag)` / `ds.remove(tag)` | modify (S1); a value of the wrong Dart type is an `ArgumentError` at the call *(amended)* | C-06 |
 | `DicomTags.*` · `TransferSyntaxes.*` · `SopClasses.*` | generated constants | C-03, C-16 |
 | `ReadOptions` · `WriteOptions` | per-call options | C-09, C-11 |
 | `file.report` / `ds.report` (`ReadReport`) | the repairs lenient reading made (C-10); `ds.report` for `Dataset.fromBytes` *(amended)* | C-10 |

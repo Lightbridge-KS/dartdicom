@@ -155,7 +155,8 @@ The message names the tag and says how to fix it: *set `DicomTags.specificCharac
 | anything else (`1-n`, `2`, `2-n`, `3`, …) | `Many<T>`, e.g. `DicomTags.windowCenter` is `Many<double>` | `ds.getAll(tag)` | `List<T>` (empty if absent) |
 | no dictionary type (private tags, keyword-string lookups) | plain `Tag` | list-only getters per family (`getStrings`, `getInts`, …) | `List<…>`: nothing is truncated, nothing throws |
 
-- **The guard is the compiler.** A singular read of a `Many` tag, a list read of a `One` tag, or the wrong value type is a compile error. `One` and `Many` are `extension type`s over `int`, so they cost nothing at runtime (spike, 2026-10-16).
+- **The guard is the compiler.** A singular read of a `Many` tag, a list read of a `One` tag, or a write through the wrong one is a compile error. `One` and `Many` are `extension type`s over `int`, so they cost nothing at runtime (spike, 2026-10-16).
+- **The wrong value type isn't always a compile error.** When the tag and the value disagree, Dart widens `T` to `Object`, so `ds.set(DicomTags.rows, 'x')` compiles. `set` and `setAll` therefore check the value against the VR's Dart type and throw an `ArgumentError` naming the tag and the type, never the value. Closing the gap at compile time is an open question for before 1.0 (I-24). *(amended)*
 - **Data that contradicts the dictionary** (a VM `1` element holding 2 values, written by a non-conformant tool) is a data error, not a caller error. `get` returns the first value *and* records a C-10 repair in the `ReadReport`.
 - **VR alternatives with different Dart types** (e.g. LUT Data, `US or OW`) generate a plain `Tag`. They are read with the family getters after checking the element's VR. Alternatives with the same Dart type (`US or SS` → `int`, `OB or OW` → `Uint8List`) are typed normally.
 - **Repeating groups** (`50xx`, `60xx`) are generated as functions that take the group and return a typed tag, e.g. `DicomTags.overlayData(0x6002)`.

@@ -47,6 +47,22 @@ void main() {
   });
 
   group('writes', () {
+    test('refuse a value of the wrong Dart type at once (I-24)', () {
+      final ds = Dataset();
+      // These compile: T widens to Object (the I-24 gap), so set checks.
+      expect(
+          () => ds.set(DicomTags.rows, 'not a number'),
+          throwsA(isA<ArgumentError>().having(
+              (e) => '$e',
+              'message',
+              allOf(contains('Rows'), contains('int'), contains('String'),
+                  isNot(contains('not a number'))))));
+      expect(() => ds.setAll(DicomTags.windowCenter, ['not', 'numbers']),
+          throwsArgumentError);
+      expect(ds.contains(DicomTags.rows), isFalse);
+      expect(ds.contains(DicomTags.windowCenter), isFalse);
+    });
+
     test('keep tag order, whatever the order of calls', () {
       final ds = Dataset()
         ..set(DicomTags.rows, 1)

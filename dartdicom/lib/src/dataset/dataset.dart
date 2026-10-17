@@ -141,15 +141,30 @@ final class Dataset {
   }
 
   /// Sets [tag] to the single [value].
-  void set<T extends Object>(One<T> tag, T value) => _put(
-      tag,
-      value is Uint8List || value is Sequence
-          ? value
-          : List<T>.unmodifiable([value]));
+  ///
+  /// Throws an [ArgumentError] if [value] isn't the Dart type [tag]'s VR
+  /// takes (data architecture §3.4). The compiler can't always tell: `T`
+  /// widens to `Object` when the tag and the value disagree (I-24).
+  void set<T extends Object>(One<T> tag, T value) {
+    final vr = _vrFor(tag);
+    _checkType(tag, vr, [value]);
+    _put(
+        tag,
+        value is Uint8List || value is Sequence
+            ? value
+            : List<T>.unmodifiable([value]),
+        vr);
+  }
 
   /// Sets [tag] to [values], in order.
-  void setAll<T extends Object>(Many<T> tag, List<T> values) =>
-      _put(tag, List<T>.unmodifiable(values));
+  ///
+  /// Throws an [ArgumentError] if a value isn't the Dart type [tag]'s VR
+  /// takes, as [set] does.
+  void setAll<T extends Object>(Many<T> tag, List<T> values) {
+    final vr = _vrFor(tag);
+    _checkType(tag, vr, values);
+    _put(tag, List<T>.unmodifiable(values), vr);
+  }
 
   /// Sets [tag] to a zero-length value: a Type 2 attribute that is present
   /// but empty, or a C-FIND return key (surface S3).
@@ -306,9 +321,32 @@ final class Dataset {
             '$accessor');
   }
 
-  void _put(Tag tag, Object canonical) {
-    _elements[tag.value] = DataElement(tag, _vrFor(tag), canonical);
+  void _put(Tag tag, Object canonical, [Vr? vr]) {
+    _elements[tag.value] = DataElement(tag, vr ?? _vrFor(tag), canonical);
     _modified = true;
+  }
+
+  /// Throws an [ArgumentError] unless every one of [values] is the Dart type
+  /// [vr]'s values take, naming the type that came instead, never a value
+  /// (I-9).
+  void _checkType(Tag tag, Vr vr, List<Object> values) {
+    final family = familyOf(vr);
+    for (final value in values) {
+      final fits = switch (family) {
+        ValueFamily.string => value is String,
+        ValueFamily.int => value is int,
+        ValueFamily.double => value is double,
+        ValueFamily.bigInt => value is BigInt,
+        // A Tag is its int at runtime.
+        ValueFamily.tag => value is int,
+        ValueFamily.bytes => value is Uint8List,
+        ValueFamily.sequence => value is Sequence,
+      };
+      if (!fits) {
+        throw ArgumentError.value('${value.runtimeType}', 'value',
+            '${describeTag(tag)} takes ${_dartType[family]} values (VR ${vr.code})');
+      }
+    }
   }
 
   Vr _vrFor(Tag tag) {
@@ -321,6 +359,16 @@ final class Dataset {
         bitsAllocated: _intAt(DicomTags.bitsAllocated),
         pixelRepresentation: _intAt(DicomTags.pixelRepresentation));
   }
+
+  static const _dartType = {
+    ValueFamily.string: 'String',
+    ValueFamily.int: 'int',
+    ValueFamily.double: 'double',
+    ValueFamily.bigInt: 'BigInt',
+    ValueFamily.tag: 'Tag',
+    ValueFamily.bytes: 'Uint8List',
+    ValueFamily.sequence: 'Sequence',
+  };
 
   int? _intAt(One<int> tag) {
     final value = _elements[tag.value]?.value;
