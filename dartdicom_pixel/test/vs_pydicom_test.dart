@@ -26,11 +26,7 @@ void main() {
         jsonDecode(golden.readAsStringSync()) as Map<String, Object?>;
     final pixels = record['pixels'] as Map<String, Object?>?;
     final ts = TransferSyntax.of(Uid(record['transfer_syntax']! as String));
-    if (pixels == null ||
-        ts == null ||
-        !ts.littleEndian ||
-        ts.deflated ||
-        ts.encapsulated) {
+    if (pixels == null || ts == null || !ts.littleEndian || ts.encapsulated) {
       continue;
     }
     final path = record['file']! as String;

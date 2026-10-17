@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
+import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
 
 DicomFile _fixture(String path) =>
@@ -204,6 +205,43 @@ void main() {
       expect(
           () => ds.toBytes(transferSyntax: TransferSyntaxes.jpegBaseline8Bit),
           throwsA(isA<DicomWriteException>()));
+    });
+  });
+
+  group('Deflated (decision 3)', () {
+    test('writing needs a codec that encodes, and says which', () {
+      final file = _fixture('synthetic/ct_deflated.dcm');
+      expect(file.toBytes, throwsA(isA<UnsupportedError>()));
+    });
+
+    test('zlib writes it, and the result reads back the same', () {
+      final file = _fixture('synthetic/ct_deflated.dcm');
+      final written = file.toBytes(
+          options: const WriteOptions(deflateCodec: ZLibDeflateCodec()));
+      final back = DicomFile.fromBytes(written);
+      expect(back.meta.transferSyntaxUid,
+          TransferSyntaxes.deflatedExplicitVrLittleEndian);
+      expect(
+          back.dataset.get(DicomTags.rows), file.dataset.get(DicomTags.rows));
+    });
+
+    test('a bare Deflated dataset (a DIMSE context) round-trips', () {
+      final query = Dataset()..set(DicomTags.patientId, 'P001');
+      final bytes = query.toBytes(
+          transferSyntax: TransferSyntaxes.deflatedExplicitVrLittleEndian,
+          deflateCodec: const ZLibDeflateCodec());
+      final back = Dataset.fromBytes(bytes,
+          transferSyntax: TransferSyntaxes.deflatedExplicitVrLittleEndian);
+      expect(back.get(DicomTags.patientId), 'P001');
+    });
+
+    test('a malformed deflated body is a parse error', () {
+      final bytes =
+          File('../fixtures/data/synthetic/ct_deflated.dcm').readAsBytesSync();
+      final broken = Uint8List.fromList(bytes)
+        ..fillRange(bytes.length - 40, bytes.length, 0xFF);
+      expect(() => DicomFile.fromBytes(broken),
+          throwsA(isA<DicomParseException>()));
     });
   });
 }

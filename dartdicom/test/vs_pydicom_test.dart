@@ -12,11 +12,11 @@ import 'package:test/test.dart';
 
 import 'support/golden.dart';
 
-/// What M1 reads: Implicit and Explicit VR Little Endian, including the
-/// encapsulated (compressed) syntaxes; not Deflated or Big Endian yet.
+/// What we read so far: every Little Endian syntax (Implicit, Explicit,
+/// Deflated, and the encapsulated ones); not Big Endian yet.
 bool _readable(String uid) {
   final ts = TransferSyntax.of(Uid(uid));
-  return ts != null && ts.littleEndian && !ts.deflated;
+  return ts != null && ts.littleEndian;
 }
 
 void main() {

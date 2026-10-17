@@ -98,11 +98,11 @@ Each step ends with the dry and floor gates green, and `just live` after a read 
   - `FileSource` / `FileSourceOpener`, `SourceChangedException` (DA2), `deferSize`, I-14.
   - D1's async prefix read with geometric growth; a nesting-depth limit.
   - Writing a partial read is refused.
-- [x] **3. Corpus census.** First run: 85 files, 68 compared, 25 failing, each scheduled in `dartdicom/test/corpus_expected.txt`. The census found a crash, a `TypeError` on a UN (0008,0005); it is guarded now and repaired in step 5.
+- [x] **3. Corpus census** (`cf14863`). First run: 85 files, 68 compared, 25 failing, each scheduled in `dartdicom/test/corpus_expected.txt`. The census found a crash, a `TypeError` on a UN (0008,0005); it is guarded now and repaired in step 5.
   - `golden.py` hardened (per-element errors, raw forms, stamps, `force`); `fixtures golden --corpus`.
   - A shared comparator with named tolerances.
   - `corpus_test.dart` as a ratchet over `corpus_expected.yaml`; the CI `corpus` job.
-- [ ] **4a. Deflated.** Pure-Dart inflate with a size cap; `ZLibDeflateCodec`; inflate in both parse entry points.
+- [x] **4a. Deflated.** The puff.c-style inflate matched zlib on the first run (stored, fixed and dynamic blocks, levels 0–9); both Deflated fixtures agree with pydicom element for element and pixel for pixel. Pure-Dart inflate with a size cap; `ZLibDeflateCodec`; inflate in both parse entry points.
 - [ ] **4b. Big Endian and the cross-syntax writer.**
   - `WriteOptions`; the copy rule by VR; the swap rule (OW Pixel Data by Bits Allocated, 8-bit included).
   - Stale group lengths dropped.

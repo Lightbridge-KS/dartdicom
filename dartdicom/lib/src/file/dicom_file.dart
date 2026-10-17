@@ -10,6 +10,7 @@ import '../tag/tags.g.dart';
 import '../tag/typed_tag.dart';
 import '../uid/implementation.dart';
 import '../uid/transfer_syntax.dart';
+import '../write/write_options.dart';
 import '../write/writer.dart';
 import 'file_meta.dart';
 
@@ -68,11 +69,11 @@ final class DicomFile {
   /// from the dataset, and (0002,0010) is the encoding actually used. Throws
   /// a [DicomWriteException] if the meta and the dataset disagree on a SOP
   /// UID (I-17), or if a value can't be encoded; nothing is written then.
-  Uint8List toBytes() {
+  Uint8List toBytes({WriteOptions options = const WriteOptions()}) {
     final declared = meta.transferSyntaxUid;
     final ts = (declared == null ? null : TransferSyntax.of(declared)) ??
         TransferSyntax.explicitVrLittleEndian;
-    final body = encodeDataset(dataset, ts);
+    final body = encodeDataset(dataset, ts, deflateCodec: options.deflateCodec);
     return (BytesBuilder(copy: false)
           ..add(_derivedMeta(ts).toHeaderBytes(preamble: preamble))
           ..add(body))

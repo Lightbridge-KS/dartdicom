@@ -13,6 +13,7 @@ export 'src/dictionary/dictionary_entry.dart' show DictionaryEntry;
 export 'src/errors.dart';
 export 'src/file/dicom_file.dart';
 export 'src/file/file_meta.dart';
+export 'src/read/inflate.dart' show DeflateCodec, PureDartInflate;
 export 'src/read/read_options.dart';
 export 'src/source/byte_source.dart'
     show ByteSource, BytesSource, NeedMoreBytes, SourceOpener;
@@ -24,3 +25,4 @@ export 'src/uid/transfer_syntax.dart';
 export 'src/uid/uid.dart';
 export 'src/uid/uids.g.dart';
 export 'src/vr/vr.dart';
+export 'src/write/write_options.dart';

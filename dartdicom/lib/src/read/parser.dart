@@ -14,6 +14,7 @@ import '../uid/transfer_syntax.dart';
 import '../uid/uid.dart';
 import '../vr/ambiguous.dart';
 import '../vr/vr.dart';
+import 'inflate.dart';
 import 'read_options.dart';
 
 // A synchronous walk over a ByteSource (design D1). It slices values without
@@ -76,6 +77,22 @@ Part10 parsePart10(ByteSource source, ReadOptions options) {
 Dataset parseDataset(ByteSource source, TransferSyntax ts, ReadOptions options,
     [int start = 0]) {
   _supported(ts.uid, start);
+  if (ts.deflated) {
+    // Everything after the meta is one raw DEFLATE stream (PS3.5 §A.5);
+    // inflated, it is Explicit VR Little Endian. Nothing is deferred: the
+    // inflated bytes are in memory.
+    final Uint8List inflated;
+    try {
+      inflated = (options.deflateCodec ?? const PureDartInflate())
+          .inflate(source.read(start, source.length - start));
+    } on FormatException catch (e) {
+      throw DicomParseException(
+          'the Deflated dataset is malformed (${e.message})',
+          offset: start);
+    }
+    source = BytesSource(inflated);
+    start = 0;
+  }
   final (elements, _, partial) = _Parser(source, ts, options)
       .readElements(start, source.length, _Scope.dataset, _Context());
   return readDataset(elements, ts.uid, partial: partial);
@@ -83,11 +100,11 @@ Dataset parseDataset(ByteSource source, TransferSyntax ts, ReadOptions options,
 
 TransferSyntax _supported(Uid uid, int offset) {
   final ts = TransferSyntax.of(uid);
-  if (ts == null || ts.deflated || !ts.littleEndian) {
+  if (ts == null || !ts.littleEndian) {
     throw DicomParseException(
         'transfer syntax ${uid.value} is not supported for reading yet '
-        '(supported: Implicit and Explicit VR Little Endian, and their '
-        'encapsulated forms)',
+        '(supported: Implicit, Explicit and Deflated Explicit VR Little '
+        'Endian, and the encapsulated forms)',
         offset: offset);
   }
   return ts;

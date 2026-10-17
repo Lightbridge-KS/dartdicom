@@ -5,6 +5,7 @@ import '../dataset/dataset.dart';
 import '../dataset/element.dart';
 import '../dataset/sequence.dart';
 import '../errors.dart';
+import '../read/inflate.dart';
 import '../tag/tags.g.dart';
 import '../uid/transfer_syntax.dart';
 import '../vr/value_codec.dart';
@@ -23,8 +24,8 @@ const _specificCharacterSet = 0x00080005;
 /// Throws a [DicomWriteException] naming the tag when a value can't be
 /// encoded; nothing is returned in that case.
 Uint8List encodeDataset(Dataset ds, TransferSyntax ts,
-    {List<String> inheritedCharset = const []}) {
-  if (ts.deflated || !ts.littleEndian) {
+    {List<String> inheritedCharset = const [], DeflateCodec? deflateCodec}) {
+  if (!ts.littleEndian) {
     throw DicomWriteException(
         'transfer syntax ${ts.uid.value} is not supported for writing yet');
   }
@@ -36,7 +37,10 @@ Uint8List encodeDataset(Dataset ds, TransferSyntax ts,
   _checkPixelEncapsulation(ds, ts);
   final out = BytesBuilder(copy: false);
   _Writer(ts).writeDataset(out, ds, inheritedCharset);
-  return out.takeBytes();
+  // Deflated: the Explicit VR Little Endian body, as one raw DEFLATE stream.
+  return ts.deflated
+      ? (deflateCodec ?? const PureDartInflate()).deflate(out.takeBytes())
+      : out.takeBytes();
 }
 
 /// Pixel Data can't move between an encapsulated (compressed) syntax and a

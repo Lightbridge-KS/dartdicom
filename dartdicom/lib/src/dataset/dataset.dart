@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../dictionary/dictionary.dart';
 import '../errors.dart';
+import '../read/inflate.dart';
 import '../read/parser.dart';
 import '../read/read_options.dart';
 import '../source/byte_source.dart';
@@ -78,8 +79,13 @@ final class Dataset {
   ///
   /// Throws a [DicomWriteException] naming the tag if a value can't be
   /// encoded.
-  Uint8List toBytes({required Uid transferSyntax}) =>
-      encodeDataset(this, _transferSyntax(transferSyntax));
+  ///
+  /// Writing Deflated needs a [deflateCodec] that encodes (the core's only
+  /// decodes); `ZLibDeflateCodec` from `package:dartdicom/io.dart` does.
+  Uint8List toBytes(
+          {required Uid transferSyntax, DeflateCodec? deflateCodec}) =>
+      encodeDataset(this, _transferSyntax(transferSyntax),
+          deflateCodec: deflateCodec);
 
   /// The number of elements at this level (not counting sequence items).
   int get length => _elements.length;

@@ -9,10 +9,13 @@ import 'dart:typed_data';
 
 import 'src/file/dicom_file.dart';
 import 'src/io/file_source.dart';
+import 'src/io/zlib_codec.dart';
 import 'src/read/read_options.dart';
 import 'src/source/byte_source.dart';
+import 'src/write/write_options.dart';
 
 export 'src/io/file_source.dart';
+export 'src/io/zlib_codec.dart';
 
 /// DICOM reads and writes on a [File], mirroring `readAsBytes` and
 /// `writeAsBytes`.
@@ -74,10 +77,17 @@ extension DicomFileIO on File {
   }
 
   /// Encodes [file] and writes it here, replacing any existing file.
-  Future<File> writeAsDicom(DicomFile file) =>
-      writeAsBytes(file.toBytes(), flush: true);
+  /// Deflated files are compressed with zlib unless [options] say otherwise.
+  Future<File> writeAsDicom(DicomFile file,
+          {WriteOptions options = const WriteOptions()}) =>
+      writeAsBytes(file.toBytes(options: _withZLib(options)), flush: true);
 
   /// Encodes [file] and writes it here synchronously.
-  void writeAsDicomSync(DicomFile file) =>
-      writeAsBytesSync(file.toBytes(), flush: true);
+  void writeAsDicomSync(DicomFile file,
+          {WriteOptions options = const WriteOptions()}) =>
+      writeAsBytesSync(file.toBytes(options: _withZLib(options)), flush: true);
 }
+
+WriteOptions _withZLib(WriteOptions options) => options.deflateCodec != null
+    ? options
+    : const WriteOptions(deflateCodec: ZLibDeflateCodec());
