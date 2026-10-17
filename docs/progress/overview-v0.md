@@ -162,11 +162,17 @@ Each step ends with the dry and floor gates green, and `just live` after a netwo
 - [x] **5. Trace (N-14)** (`b7f59e0`). `Trace(sink, level:, showValues:)` on `ApplicationEntity`; `TraceSink` (`TraceSink.lines` for a logger); a sealed `TraceEvent` of `DimseTrace` (the message by name, its command fields, its dataset by size) and `PduTrace` (a value-free summary, the transition such as `Sta6 + Evt10 → DT-2 → Sta6`, and hex for association, release and abort PDUs only).
   - Instance UIDs and error comments are masked unless `showValues: true`, which also shows P-DATA hex.
   - `trace/` sits at layer rank 0 in the architecture test. A sink that throws never disturbs the association.
-- [x] **6. C-STORE SCU (N-10).** `sendCStore(DicomFile)` → `DimseStatus`, live into Orthanc and found back by C-FIND. The C-STORE-RQ command set matches pynetdicom's three vectors.
+- [x] **6. C-STORE SCU (N-10)** (`a3b874f`). `sendCStore(DicomFile)` → `DimseStatus`, live into Orthanc and found back by C-FIND. The C-STORE-RQ command set matches pynetdicom's three vectors.
   - **Context choice:** the file's own syntax when the core can write it, so an untouched dataset goes out byte for byte; otherwise Explicit then Implicit VR LE for a native file; otherwise a `StateError` naming the context to propose.
   - **Roles:** a class both requested and retrieved is proposed with both SCU and SCP roles. `AcceptedContext.scuRole` falls back to the default roles when the acceptor sends no reply.
   - **Also:** `ApplicationEntity.deflateCodec` and `PresentationContexts.storage`.
-- [ ] **7. StorageScp (N-09, F3).** The listener, acceptor ACSE, the serve loop, the shared store handler; `peerAeTitle`; concurrency-safe `DirectorySink`; an acceptor fuzz.
+- [x] **7. StorageScp (N-09, F3).** `StorageScp.start(aeTitle:, sink:, acceptFrom: [ScpPeer(…, host:)], port:, address:, maxAssociations:, timeouts:, trace:)` / `port` / `close()`. Live, DCMTK `storescu` stores into it in Explicit and Implicit VR.
+  - **Acceptor ACSE** (`acse/acceptor.dart`): pynetdicom's rejections (1,1,7), (1,1,3), (2,3,2). Verification and every storage class are accepted, uncompressed preferred with compressed as a fallback; no role replies.
+  - **Serve loop** (`association/serve.dart`, not exported): C-ECHO, C-STORE through the store handler now shared with C-GET (`association/store.dart`), 0x0211 for anything else.
+  - **Pre-association cap:** PDUs are capped at 1 MiB until the association is accepted.
+  - **Sinks:** `ReceivedInstance.moveOriginatorAeTitle` / `moveOriginatorMessageId`; `DirectorySink` writes uniquely named `.part` files.
+  - **Tests:** over real localhost sockets, including the same instance from two associations at once, `close()` mid-store, and 150 mutated association requests.
+  - **Not done from the plan:** no `Association` object for the acceptor and no `calledAeTitle` → `peerAeTitle` rename. The serve loop takes the peer's AE title directly, so neither was needed.
 - [ ] **8. C-MOVE SCU (N-09).** `sendCMove`; compose `host-gateway`; `retrieve_and_render --via=move`.
 - [ ] **9. Interop matrix.** DCMTK (`dcmqrscp`, `storescp`, `storescu`) and pynetdicom (`qrscp`, `storescp`, `storescu`) peers via `scripts/interop_peers.sh`; `interop.yml` nightly.
 - [ ] **10. Fuzz, net PHI canary, close.** PDU decoder, assembler and DUL fuzz; the canary over trace and exceptions; I-7's regex.

@@ -263,6 +263,8 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Change PHI masking | `dartdicom/lib/src/redact/` (dump, C-21); the protocol trace's masking is `dartdicom_net/lib/src/trace/trace.dart` (F5) *(amended)* |
 | Add a PDU sub-item (e.g. user identity) | `dartdicom_net/lib/src/pdu/items.dart` |
 | Fix a state-machine transition | `dartdicom_net/lib/src/fsm/table.dart` |
+| Change what the StorageScp accepts (classes, syntaxes, rejections) | `dartdicom_net/lib/src/acse/acceptor.dart`; the peer check in `dartdicom_net/lib/src/scp/storage_scp.dart` *(amended, M3)* |
+| Answer another request on an acceptor association | `dartdicom_net/lib/src/association/serve.dart` (N-15 makes it public) *(amended, M3)* |
 | Add a DIMSE service | `dartdicom_net/lib/src/dimse/messages.dart` plus an `Association` method |
 | Add a pixel codec | its own package, or `dartdicom_pixel/lib/src/codec/<name>.dart`; registered by the caller |
 | Change windowing or LUT behavior | `dartdicom_pixel/lib/src/lut/` |

@@ -6,12 +6,17 @@ import 'dart:typed_data';
 const maxPduBytes = 64 * 1024 * 1024;
 
 /// Splits a TCP byte stream into whole PDUs (`type | reserved | length (4) |
-/// body`), whatever the chunking. A length above [maxPduBytes] is an error.
+/// body`), whatever the chunking. A length above the cap is an error: by
+/// default [maxPduBytes], or what [maxLength] says when each PDU starts
+/// (an acceptor caps PDUs tighter until it accepts an association).
 ///
 /// Bytes accumulate in one growing buffer, so framing costs linear time in
 /// the bytes received, not quadratic in the number of chunks.
 final class PduFramer extends StreamTransformerBase<Uint8List, Uint8List> {
-  const PduFramer();
+  const PduFramer({this.maxLength});
+
+  /// The cap for the next PDU; `null` means [maxPduBytes].
+  final int Function()? maxLength;
 
   @override
   Stream<Uint8List> bind(Stream<Uint8List> stream) {
@@ -34,9 +39,10 @@ final class PduFramer extends StreamTransformerBase<Uint8List, Uint8List> {
       while (length - start >= 6) {
         final body =
             ByteData.sublistView(buffer, start + 2, start + 6).getUint32(0);
-        if (body > maxPduBytes) {
+        final cap = maxLength?.call() ?? maxPduBytes;
+        if (body > cap) {
           out.addError(FormatException(
-              'a PDU declares $body bytes, more than the $maxPduBytes allowed'));
+              'a PDU declares $body bytes, more than the $cap allowed'));
           sub?.cancel();
           out.close();
           return;

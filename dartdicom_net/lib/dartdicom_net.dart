@@ -19,6 +19,7 @@ export 'src/dimse/status.dart';
 export 'src/timeouts.dart';
 export 'src/trace/trace.dart';
 export 'src/errors.dart';
+export 'src/scp/storage_scp.dart';
 export 'src/sink/directory_sink.dart';
 export 'src/sink/instance_sink.dart';
 export 'src/transport/in_memory_transport.dart';

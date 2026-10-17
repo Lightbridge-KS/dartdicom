@@ -17,8 +17,16 @@ final _host = _env['ORTHANC_HOST'] ?? 'localhost';
 final _port = int.parse(_env['ORTHANC_DIMSE_PORT'] ?? '14242');
 final _aet = _env['ORTHANC_AET'] ?? 'ORTHANC';
 final _skip = _env.containsKey('DARTDICOM_LIVE')
-    ? false
+    ? null
     : 'set DARTDICOM_LIVE=1 (just live) with a test PACS running';
+
+/// A skip reason when [tool] isn't installed (DCMTK, outside CI).
+String? _missing(String tool) {
+  final found = Process.runSync('which', [tool]).exitCode == 0;
+  if (found) return null;
+  if (_env.containsKey('CI')) throw StateError('$tool is required in CI');
+  return '$tool is not installed (DCMTK)';
+}
 
 void main() {
   test('C-ECHO, then release', () async {
@@ -89,6 +97,33 @@ void main() {
     expect(found, hasLength(1));
     await assoc.release();
   }, skip: _skip);
+
+  test('DCMTK storescu stores into our StorageScp', () async {
+    final sink = MemorySink();
+    final scp = await StorageScp.start(
+        aeTitle: 'DARTDICOM',
+        sink: sink,
+        acceptFrom: const [ScpPeer('STORESCU')],
+        address: InternetAddress.loopbackIPv4);
+    addTearDown(scp.close);
+    for (final syntax in ['-xe', '-xi']) {
+      final result = await Process.run('storescu', [
+        syntax,
+        '-aet', 'STORESCU', '-aec', 'DARTDICOM', //
+        '127.0.0.1', '${scp.port}',
+        '../fixtures/data/synthetic/ct_signed_explicit_le.dcm',
+      ]);
+      expect(result.exitCode, 0, reason: '${result.stderr}');
+    }
+    expect(sink.instances, hasLength(2));
+    expect([
+      for (final i in sink.instances) i.transferSyntax
+    ], [
+      TransferSyntaxes.explicitVrLittleEndian,
+      TransferSyntaxes.implicitVrLittleEndian,
+    ]);
+    expect(sink.instances.first.sourceAeTitle, 'STORESCU');
+  }, skip: _skip ?? _missing('storescu'));
 
   test('C-FIND at STUDY, then SERIES level', () async {
     const ae = ApplicationEntity(

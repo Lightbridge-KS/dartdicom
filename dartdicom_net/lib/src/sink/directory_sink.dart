@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:dartdicom/dartdicom.dart';
 
@@ -12,16 +13,21 @@ import 'instance_sink.dart';
 ///   is parsed, for the two UIDs in the path (F39).
 /// - **UIDs only in paths:** no patient attribute ever names a file, and a
 ///   UID that isn't digits and dots is refused (I-21).
-/// - **Whole or absent:** each file is written as `.dcm.part`, then
-///   renamed (F25).
+/// - **Whole or absent:** each file is written under a name of its own
+///   ending `.part`, then renamed (F25). Two associations storing the same
+///   instance at once can't write into one file.
 final class DirectorySink implements InstanceSink {
   DirectorySink(this.root);
 
   /// The directory files are stored under; created as needed.
   final Directory root;
 
-  /// The file each stored instance went to, in order.
+  /// The file each stored instance went to, in order. It grows with every
+  /// instance: a long-running `StorageScp` keeps a sink per session.
   final stored = <File>[];
+
+  final _random = Random();
+  var _count = 0;
 
   @override
   Future<void> accept(ReceivedInstance instance) async {
@@ -35,7 +41,8 @@ final class DirectorySink implements InstanceSink {
     final dir = Directory.fromUri(root.uri.resolve('${parts[0]}/${parts[1]}/'));
     await dir.create(recursive: true);
     final target = File.fromUri(dir.uri.resolve('${parts[2]}.dcm'));
-    final partial = File('${target.path}.part');
+    final partial = File('${target.path}.'
+        '${_random.nextInt(0x7FFFFFFF).toRadixString(36)}-${_count++}.part');
     final out = await partial.open(mode: FileMode.writeOnly);
     try {
       await out.writeFrom(instance.fileMeta.toHeaderBytes());

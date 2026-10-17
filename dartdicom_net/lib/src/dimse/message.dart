@@ -95,6 +95,23 @@ Dataset storeCommand(int messageId, String sopClassUid, String sopInstanceUid,
   return ds;
 }
 
+/// A response's command set: [field], responding to [messageId], with
+/// [status] and no dataset; the affected SOP class and instance when the
+/// request named them (PS3.7 §9.3).
+Dataset responseCommand(int field, int messageId, int status,
+    {String? sopClassUid, String? sopInstanceUid}) {
+  final ds = Dataset()
+    ..set(DicomTags.commandField, field)
+    ..set(DicomTags.messageIdBeingRespondedTo, messageId)
+    ..set(DicomTags.commandDataSetType, noDataset)
+    ..set(DicomTags.status, status);
+  if (sopClassUid != null) ds.set(DicomTags.affectedSopClassUid, sopClassUid);
+  if (sopInstanceUid != null) {
+    ds.set(DicomTags.affectedSopInstanceUid, sopInstanceUid);
+  }
+  return ds;
+}
+
 /// C-CANCEL-RQ for request [messageId] (PS3.7 §9.3.2.3): only the command
 /// field, the ID it responds to and "no dataset", as pynetdicom sends it.
 Dataset cancelCommand(int messageId) => Dataset()

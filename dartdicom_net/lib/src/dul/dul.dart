@@ -41,9 +41,9 @@ final class Dul {
       : this._(transport, UlEvent.evt5, timeouts, trace, isRequestor: false);
 
   Dul._(this._transport, UlEvent opening, this.timeouts, this.trace,
-      {required this.isRequestor})
-      : _pdus =
-            StreamIterator(_transport.incoming.transform(const PduFramer())) {
+      {required this.isRequestor}) {
+    _pdus = StreamIterator(
+        _transport.incoming.transform(PduFramer(maxLength: _pduCap)));
     _local(opening); // AE-1 or AE-5: the transport is already connected
     if (!isRequestor) _startTimer(TimeoutKind.acse); // ARTIM, Sta2
     unawaited(_read());
@@ -62,7 +62,16 @@ final class Dul {
   final bool isRequestor;
 
   final Transport _transport;
-  final StreamIterator<Uint8List> _pdus;
+  late final StreamIterator<Uint8List> _pdus;
+
+  /// An acceptor takes PDUs of at most 1 MiB until it has an association,
+  /// so connections that never associate can't each hold 64 MiB.
+  static const _preAssociationCap = 1 << 20;
+
+  int _pduCap() =>
+      !isRequestor && (_state == UlState.sta2 || _state == UlState.sta3)
+          ? _preAssociationCap
+          : maxPduBytes;
   var _state = UlState.sta1;
 
   /// PDUs for the association layer, at most one (the read-ahead).

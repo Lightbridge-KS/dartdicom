@@ -8,6 +8,9 @@ import 'package:dartdicom/dartdicom.dart';
 /// `accept` may be slow (a disk write): the association waits for it before
 /// answering the C-STORE-RQ. If it throws an [Exception], the peer gets a
 /// failure status for that instance and the retrieve carries on.
+///
+/// A `StorageScp` serves several associations at once, so `accept` may run
+/// concurrently, possibly for the same instance twice.
 abstract interface class InstanceSink {
   /// Takes one received instance.
   Future<void> accept(ReceivedInstance instance);
@@ -23,6 +26,8 @@ final class ReceivedInstance {
     required this.transferSyntax,
     required this.bytes,
     required this.sourceAeTitle,
+    this.moveOriginatorAeTitle,
+    this.moveOriginatorMessageId,
   });
 
   /// (0000,0002) Affected SOP Class UID.
@@ -40,6 +45,14 @@ final class ReceivedInstance {
 
   /// The AE title of the peer that sent it, for (0002,0016).
   final String sourceAeTitle;
+
+  /// For a C-MOVE sub-operation, the AE title that asked for the move,
+  /// (0000,1030): which retrieve this instance belongs to.
+  final String? moveOriginatorAeTitle;
+
+  /// For a C-MOVE sub-operation, the message ID of the C-MOVE-RQ,
+  /// (0000,1031).
+  final int? moveOriginatorMessageId;
 
   /// File meta for storing [bytes] as a Part 10 file: write
   /// `fileMeta.toHeaderBytes()`, then [bytes] unchanged.

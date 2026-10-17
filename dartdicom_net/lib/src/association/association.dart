@@ -13,6 +13,7 @@ import '../pdu/pdus.dart';
 import '../sink/instance_sink.dart';
 import 'presentation_contexts.dart';
 import 'retrieve_progress.dart';
+import 'store.dart';
 import '../transport/transport.dart';
 import 'application_entity.dart';
 
@@ -317,35 +318,8 @@ final class Association {
   Future<void> _store(DimseMessage rq, InstanceSink sink) async {
     final context =
         acceptedContexts.where((c) => c.id == rq.contextId).firstOrNull;
-    final sopClass = rq.affectedSopClassUid;
-    final sopInstance = rq.affectedSopInstanceUid;
-    int status;
-    if (context == null || !context.scpRole) {
-      status = 0x0122; // SOP class not supported: no SCP role was accepted
-    } else if (sopClass == null || sopInstance == null || rq.dataset == null) {
-      status = 0xC211;
-    } else {
-      try {
-        await sink.accept(ReceivedInstance(
-            sopClassUid: Uid(sopClass),
-            sopInstanceUid: Uid(sopInstance),
-            transferSyntax: context.transferSyntax,
-            bytes: rq.dataset!,
-            sourceAeTitle: calledAeTitle));
-        status = 0x0000;
-      } on Exception {
-        status = 0xC211; // the sink failed; the peer counts it as failed
-      }
-    }
-    final rsp = Dataset()
-      ..set(DicomTags.commandField, CommandField.cStoreRsp)
-      ..set(DicomTags.messageIdBeingRespondedTo, rq.messageId ?? 0)
-      ..set(DicomTags.commandDataSetType, noDataset)
-      ..set(DicomTags.status, status);
-    if (sopClass != null) rsp.set(DicomTags.affectedSopClassUid, sopClass);
-    if (sopInstance != null) {
-      rsp.set(DicomTags.affectedSopInstanceUid, sopInstance);
-    }
+    final rsp = await storeInstance(rq, context, sink,
+        mayStore: context?.scpRole ?? false, peerAeTitle: calledAeTitle);
     await _channel.send(DimseMessage(rq.contextId, rsp));
   }
 
