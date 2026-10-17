@@ -1,10 +1,15 @@
-// The tracer bullet, end to end: find a study on a PACS, C-GET one of its
-// series into a directory, read a stored file, and render its first frame
-// as an 8-bit PGM image.
+// The tracer bullet, end to end: find a study on a PACS, retrieve one of
+// its series into a directory, read a stored file, and render its first
+// frame as an 8-bit PGM image.
 //
 //   dart run bin/retrieve_and_render.dart [--patient-id=ID] [--out=DIR]
 //       [--host=localhost] [--port=14242] [--called-ae=ORTHANC]
-//       [--calling-ae=DARTDICOM]
+//       [--calling-ae=DARTDICOM] [--via=get|move] [--scp-port=14112]
+//
+// --via=get (the default) retrieves over this association with C-GET: no
+// inbound port. --via=move asks the PACS to send the series to this app's
+// StorageScp with C-MOVE: the PACS must know the calling AE title, this
+// host and the SCP port, and a firewall must let it in.
 //
 // Defaults match docker/compose.yaml (`just pacs-up`, `just pacs-seed`).
 // It prints counts, UIDs and progress, never patient attributes.
@@ -22,6 +27,8 @@ Future<void> main(List<String> args) async {
     'called-ae': Platform.environment['ORTHANC_AET'] ?? 'ORTHANC',
     'calling-ae': 'DARTDICOM',
     'out': 'build/retrieve_and_render',
+    'via': 'get',
+    'scp-port': Platform.environment['DARTDICOM_SCP_PORT'] ?? '14112',
     for (final arg in args)
       if (RegExp(r'^--([\w-]+)=(.*)$').firstMatch(arg) case final m?)
         m.group(1)!: m.group(2)!,
@@ -66,15 +73,32 @@ Future<void> main(List<String> args) async {
     final seriesUid = series.first.require(DicomTags.seriesInstanceUid);
     stdout.writeln('C-FIND SERIES: ${series.length} in study $studyUid');
 
-    // Retrieve: every instance of the series arrives on this association.
-    await for (final p in assoc.sendCGet(
-        Dataset()
-          ..set(DicomTags.queryRetrieveLevel, 'SERIES')
-          ..set(DicomTags.studyInstanceUid, studyUid)
-          ..set(DicomTags.seriesInstanceUid, seriesUid),
-        sink)) {
-      stdout.writeln('C-GET: ${p.completed}/${p.total} completed, '
-          '${p.failed} failed (${p.status})');
+    final seriesQuery = Dataset()
+      ..set(DicomTags.queryRetrieveLevel, 'SERIES')
+      ..set(DicomTags.studyInstanceUid, studyUid)
+      ..set(DicomTags.seriesInstanceUid, seriesUid);
+    if (options['via'] == 'move') {
+      // C-MOVE: the PACS opens its own association to our StorageScp.
+      final scp = await StorageScp.start(
+          aeTitle: options['calling-ae']!,
+          port: int.parse(options['scp-port']!),
+          sink: sink,
+          acceptFrom: [ScpPeer(options['called-ae']!)]);
+      try {
+        await for (final p in assoc.sendCMove(seriesQuery,
+            destination: options['calling-ae']!)) {
+          stdout.writeln('C-MOVE: ${p.completed}/${p.total} completed, '
+              '${p.failed} failed (${p.status})');
+        }
+      } finally {
+        await scp.close();
+      }
+    } else {
+      // C-GET: every instance of the series arrives on this association.
+      await for (final p in assoc.sendCGet(seriesQuery, sink)) {
+        stdout.writeln('C-GET: ${p.completed}/${p.total} completed, '
+            '${p.failed} failed (${p.status})');
+      }
     }
   } finally {
     await assoc.release();

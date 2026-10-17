@@ -85,6 +85,20 @@ void main() {
       }
     });
 
+    test('a C-MOVE request is requestCommand plus Move Destination', () {
+      final v = vectors.firstWhere((v) => v['name'] == 'C-MOVE-RQ');
+      final expected = _command((v['command']! as List<Object?>).cast());
+      final built = requestCommand(
+          CommandField.cMoveRq,
+          expected.require(DicomTags.messageId),
+          SopClasses.studyRootQueryRetrieveInformationModelMove,
+          hasDataset: true,
+          priority: mediumPriority)
+        ..set(DicomTags.moveDestination, 'DARTDICOM');
+      expect(_hexOf(DimseMessage(1, built).encodeCommand()),
+          _hexOf(DimseMessage(1, expected).encodeCommand()));
+    });
+
     test('storeCommand builds C-STORE-RQ, with and without a move originator',
         () {
       final stores = vectors.where((v) => v['name'] == 'C-STORE-RQ');

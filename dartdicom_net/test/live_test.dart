@@ -98,6 +98,53 @@ void main() {
     await assoc.release();
   }, skip: _skip);
 
+  test('C-MOVE a series from the PACS into our StorageScp', () async {
+    const ae = ApplicationEntity(
+        aeTitle: 'DARTDICOM',
+        requestedContexts: PresentationContexts.studyRootQueryRetrieve);
+    final assoc = await ae.associate(_host, _port, aeTitle: _aet);
+    final sink = MemorySink();
+    // The PACS knows DARTDICOM at this host and port (docker/compose.yaml).
+    final scp = await StorageScp.start(
+        aeTitle: 'DARTDICOM',
+        port: int.parse(_env['DARTDICOM_SCP_PORT'] ?? '14112'),
+        sink: sink,
+        acceptFrom: [ScpPeer(_aet)]);
+    try {
+      final study = await assoc
+          .sendCFind(Dataset()
+            ..set(DicomTags.queryRetrieveLevel, 'STUDY')
+            ..set(DicomTags.patientId, '1CT1')
+            ..setEmpty(DicomTags.studyInstanceUid))
+          .first;
+      final series = await assoc
+          .sendCFind(Dataset()
+            ..set(DicomTags.queryRetrieveLevel, 'SERIES')
+            ..set(DicomTags.studyInstanceUid,
+                study.require(DicomTags.studyInstanceUid))
+            ..setEmpty(DicomTags.seriesInstanceUid))
+          .first;
+      final progress = await assoc
+          .sendCMove(
+              Dataset()
+                ..set(DicomTags.queryRetrieveLevel, 'SERIES')
+                ..set(DicomTags.studyInstanceUid,
+                    study.require(DicomTags.studyInstanceUid))
+                ..set(DicomTags.seriesInstanceUid,
+                    series.require(DicomTags.seriesInstanceUid)),
+              destination: 'DARTDICOM')
+          .toList();
+      expect(progress.last.status, isA<DimseSuccess>());
+      expect(sink.instances, hasLength(progress.last.completed));
+      expect(sink.instances, isNotEmpty);
+      expect(sink.instances.first.sourceAeTitle, _aet);
+      expect(sink.instances.first.moveOriginatorAeTitle, 'DARTDICOM');
+    } finally {
+      await assoc.release();
+      await scp.close();
+    }
+  }, skip: _skip);
+
   test('DCMTK storescu stores into our StorageScp', () async {
     final sink = MemorySink();
     final scp = await StorageScp.start(

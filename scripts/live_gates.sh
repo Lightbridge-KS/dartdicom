@@ -21,16 +21,20 @@ scripts/pacs_seed.sh
 echo "### live tests (dartdicom_net)"
 (cd dartdicom_net && DARTDICOM_LIVE=1 deadline 120 dart test test/live_test.dart)
 
-echo "### examples/bin/retrieve_and_render.dart"
-out="$(mktemp -d)"
-(cd examples && deadline 120 dart run bin/retrieve_and_render.dart \
-  --patient-id=1CT1 --out="$out")
-header="$(head -c 15 "$out/frame0.pgm")"
-expected="$(printf 'P5\n128 128\n255\n')"
-if [ "$header" != "$expected" ]; then
-  echo "the example's PGM header is wrong: $(printf '%q' "$header")" >&2
-  exit 1
-fi
-size="$(wc -c <"$out/frame0.pgm" | tr -d ' ')"
-[ "$size" -eq $((15 + 128 * 128)) ] || { echo "the PGM is $size bytes" >&2; exit 1; }
+# The example both ways: C-GET (the default), then C-MOVE into its own
+# StorageScp.
+for via in get move; do
+  echo "### examples/bin/retrieve_and_render.dart --via=$via"
+  out="$(mktemp -d)"
+  (cd examples && deadline 120 dart run bin/retrieve_and_render.dart \
+    --patient-id=1CT1 --out="$out" --via="$via")
+  header="$(head -c 15 "$out/frame0.pgm")"
+  expected="$(printf 'P5\n128 128\n255\n')"
+  if [ "$header" != "$expected" ]; then
+    echo "the example's PGM header is wrong: $(printf '%q' "$header")" >&2
+    exit 1
+  fi
+  size="$(wc -c <"$out/frame0.pgm" | tr -d ' ')"
+  [ "$size" -eq $((15 + 128 * 128)) ] || { echo "the PGM is $size bytes" >&2; exit 1; }
+done
 echo "live gates: OK"

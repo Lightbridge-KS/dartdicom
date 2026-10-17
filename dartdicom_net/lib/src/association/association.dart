@@ -206,6 +206,51 @@ final class Association {
         );
       });
 
+  /// Sends C-MOVE-RQ with [query]: the peer stores the instances it matches
+  /// on a new association of its own to the AE titled [destination] (PRD
+  /// N-09), typically this app's `StorageScp`, which the peer must know by
+  /// that title, host and port.
+  ///
+  /// Emits a [RetrieveProgress] for each response; the last carries the
+  /// final status. A final Failure is then also a [DimseFailureException]
+  /// stream error (surface S5). Cancelling the subscription sends
+  /// C-CANCEL-RQ, and `cancel()` completes once the peer has confirmed it
+  /// (F14).
+  Stream<RetrieveProgress> sendCMove(Dataset query,
+      {required String destination,
+      QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) {
+    if (destination.trim().isEmpty || destination.length > 16) {
+      throw ArgumentError.value(destination, 'destination',
+          'must be the 1–16 character AE title of the move destination');
+    }
+    return _operation('C-MOVE', model.move, CommandField.cMoveRq, query,
+        (message, id, context) async {
+      if (message.commandField == CommandField.cStoreRq) {
+        // A store on this association during a move: not ours to take.
+        final rsp = await storeInstance(message, null, MemorySink(),
+            mayStore: false, peerAeTitle: calledAeTitle);
+        await _channel.send(DimseMessage(message.contextId, rsp));
+        return (item: null, last: false, failure: null);
+      }
+      if (message.commandField != CommandField.cMoveRsp ||
+          message.messageIdBeingRespondedTo != id) {
+        await _channel
+            .protocolAbort('expected a C-MOVE response, but got $message');
+      }
+      final progress = RetrieveProgress.fromResponse(message);
+      return (
+        item: progress,
+        last: progress.isFinal,
+        failure: switch (progress.status) {
+          final DimseFailure failure => failure,
+          _ => null,
+        },
+      );
+    },
+        extend: (command) =>
+            command.set(DicomTags.moveDestination, destination));
+  }
+
   /// Runs one multi-response operation alone on the association: sends the
   /// [command] request with [query] on the context accepted for [sopClass],
   /// then hands each message that arrives to [step] until one is the last.

@@ -15,6 +15,10 @@ name: dartdicom
 services:
   orthanc:
     image: orthancteam/orthanc:26.9.1
+    # Docker Desktop resolves host.docker.internal; Linux Docker Engine (CI)
+    # needs it mapped to the host's gateway for C-MOVE to reach the app.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${ORTHANC_DIMSE_PORT:-14242}:4242"
       - "${ORTHANC_HTTP_PORT:-18042}:8042"

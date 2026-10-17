@@ -166,14 +166,16 @@ Each step ends with the dry and floor gates green, and `just live` after a netwo
   - **Context choice:** the file's own syntax when the core can write it, so an untouched dataset goes out byte for byte; otherwise Explicit then Implicit VR LE for a native file; otherwise a `StateError` naming the context to propose.
   - **Roles:** a class both requested and retrieved is proposed with both SCU and SCP roles. `AcceptedContext.scuRole` falls back to the default roles when the acceptor sends no reply.
   - **Also:** `ApplicationEntity.deflateCodec` and `PresentationContexts.storage`.
-- [x] **7. StorageScp (N-09, F3).** `StorageScp.start(aeTitle:, sink:, acceptFrom: [ScpPeer(…, host:)], port:, address:, maxAssociations:, timeouts:, trace:)` / `port` / `close()`. Live, DCMTK `storescu` stores into it in Explicit and Implicit VR.
+- [x] **7. StorageScp (N-09, F3)** (`b656672`). `StorageScp.start(aeTitle:, sink:, acceptFrom: [ScpPeer(…, host:)], port:, address:, maxAssociations:, timeouts:, trace:)` / `port` / `close()`. Live, DCMTK `storescu` stores into it in Explicit and Implicit VR.
   - **Acceptor ACSE** (`acse/acceptor.dart`): pynetdicom's rejections (1,1,7), (1,1,3), (2,3,2). Verification and every storage class are accepted, uncompressed preferred with compressed as a fallback; no role replies.
   - **Serve loop** (`association/serve.dart`, not exported): C-ECHO, C-STORE through the store handler now shared with C-GET (`association/store.dart`), 0x0211 for anything else.
   - **Pre-association cap:** PDUs are capped at 1 MiB until the association is accepted.
   - **Sinks:** `ReceivedInstance.moveOriginatorAeTitle` / `moveOriginatorMessageId`; `DirectorySink` writes uniquely named `.part` files.
   - **Tests:** over real localhost sockets, including the same instance from two associations at once, `close()` mid-store, and 150 mutated association requests.
   - **Not done from the plan:** no `Association` object for the acceptor and no `calledAeTitle` → `peerAeTitle` rename. The serve loop takes the peer's AE title directly, so neither was needed.
-- [ ] **8. C-MOVE SCU (N-09).** `sendCMove`; compose `host-gateway`; `retrieve_and_render --via=move`.
+- [x] **8. C-MOVE SCU (N-09).** `sendCMove(query, destination:)` → `Stream<RetrieveProgress>`, with S5 and C-CANCEL like C-GET; the C-MOVE-RQ matches pynetdicom's vector.
+  - Live on the first run: Orthanc moved a series into our StorageScp, and `retrieve_and_render --via=move` renders it. `live_gates.sh` runs the example both ways.
+  - Compose maps `host.docker.internal` to the host gateway for Linux CI.
 - [ ] **9. Interop matrix.** DCMTK (`dcmqrscp`, `storescp`, `storescu`) and pynetdicom (`qrscp`, `storescp`, `storescu`) peers via `scripts/interop_peers.sh`; `interop.yml` nightly.
 - [ ] **10. Fuzz, net PHI canary, close.** PDU decoder, assembler and DUL fuzz; the canary over trace and exceptions; I-7's regex.
 
@@ -239,6 +241,7 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| Orthanc 1.13.0 performs a C-MOVE over a new association whose calling AE title is its own (`ORTHANC`), and stamps each C-STORE-RQ with the requestor as Move Originator. For a one-instance series it sends only the final C-MOVE-RSP, with no pending one. | `live_test.dart`, `retrieve_and_render --via=move`, 2026-10-17 |
 | Orthanc 1.13.0 ends an association left idle for its `DicomScpTimeout` (30 s by default) with an A-ABORT. Our network timeout (60 s) is longer, so against a stock Orthanc the PACS ends an idle association first; the DUL's pending read notices it while no operation runs (F42). | `live_test.dart`, 2026-10-17 |
 | DCMTK 3.7.0's `dcmdump` raises nothing on the 427 files dartdicom writes from the fixtures and the corpus, except a notice for private sequences in Implicit VR (CP-246, allowlisted). The one source warning, OW on encapsulated Pixel Data in `SC_rgb_rle_16bit.dcm`, is the source's: the as-read write copies it under I-10. | `scripts/written_gate.sh`, 2026-10-17 |
 | pydicom types private tags in Implicit VR from its private dictionary, sequences included: a defined-length private SQ written as Implicit VR reads as an SQ in pydicom and as UN without one (`OBXXXX1A_expb.dcm`, (200D,110D)). | `written_test.dart`, pydicom 3.0.2, 2026-10-17 |
