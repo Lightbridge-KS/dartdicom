@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:collection';
 
 import 'package:dartdicom/dartdicom.dart';
 
 import '../acse/negotiation.dart';
-import '../dimse/fragments.dart';
+import '../dimse/channel.dart';
 import '../dimse/message.dart';
 import '../dimse/status.dart';
 import '../dul/dul.dart';
@@ -25,7 +24,8 @@ import 'application_entity.dart';
 /// D3).
 final class Association {
   Association._(this._dul, this.calledAeTitle, this.acceptedContexts,
-      this._peerMaxPduLength);
+      int peerMaxPduLength)
+      : _channel = DimseChannel(_dul, peerMaxPduLength);
 
   /// Requests an association over [transport] with [rq].
   static Future<Association> request(
@@ -37,9 +37,7 @@ final class Association {
   }
 
   final Dul _dul;
-  final int _peerMaxPduLength;
-  final _assembler = Assembler();
-  final _received = Queue<DimseMessage>();
+  final DimseChannel _channel;
   var _lastMessageId = 0;
   var _busy = false;
 
@@ -53,7 +51,7 @@ final class Association {
   Future<DimseStatus> sendCEcho() => _exclusive(() async {
         final context = _contextFor(SopClasses.verification, 'C-ECHO');
         final id = _nextMessageId();
-        await _send(DimseMessage(
+        await _channel.send(DimseMessage(
             context.id,
             requestCommand(CommandField.cEchoRq, id, SopClasses.verification,
                 hasDataset: false)));
@@ -78,7 +76,7 @@ final class Association {
     var finished = false;
     try {
       final id = _nextMessageId();
-      await _send(DimseMessage(
+      await _channel.send(DimseMessage(
           context.id,
           requestCommand(CommandField.cFindRq, id, model.find,
               hasDataset: true, priority: mediumPriority),
@@ -126,20 +124,20 @@ final class Association {
     var finished = false;
     try {
       final id = _nextMessageId();
-      await _send(DimseMessage(
+      await _channel.send(DimseMessage(
           context.id,
           requestCommand(CommandField.cGetRq, id, model.get,
               hasDataset: true, priority: mediumPriority),
           query.toBytes(transferSyntax: context.transferSyntax)));
       while (true) {
-        final message = await _receive();
+        final message = await _channel.receive();
         if (message.commandField == CommandField.cStoreRq) {
           await _store(message, sink);
           continue;
         }
         if (message.commandField != CommandField.cGetRsp ||
             message.messageIdBeingRespondedTo != id) {
-          await _protocolAbort('expected a C-GET response or a C-STORE '
+          await _channel.protocolAbort('expected a C-GET response or a C-STORE '
               'sub-operation, but got $message');
         }
         final progress = RetrieveProgress.fromResponse(message);
@@ -194,7 +192,7 @@ final class Association {
     if (sopInstance != null) {
       rsp.set(DicomTags.affectedSopInstanceUid, sopInstance);
     }
-    await _send(DimseMessage(rq.contextId, rsp));
+    await _channel.send(DimseMessage(rq.contextId, rsp));
   }
 
   /// Releases the association gracefully (A-RELEASE) and closes the
@@ -232,45 +230,16 @@ final class Association {
   int _nextMessageId() =>
       _lastMessageId = _lastMessageId == 0xFFFF ? 1 : _lastMessageId + 1;
 
-  Future<void> _send(DimseMessage message) async {
-    for (final pdu in fragment(message, _peerMaxPduLength)) {
-      await _dul.send(pdu);
-    }
-  }
-
-  /// The next whole DIMSE message from the peer.
-  Future<DimseMessage> _receive() async {
-    while (_received.isEmpty) {
-      final pdu = await _dul.receive();
-      if (pdu is! PDataTf) {
-        await _protocolAbort('unexpected $pdu during an operation');
-      }
-      final List<DimseMessage> messages;
-      try {
-        messages = _assembler.feed(pdu);
-      } on DimseProtocolException {
-        await _dul.abort();
-        rethrow;
-      }
-      _received.addAll(messages);
-    }
-    return _received.removeFirst();
-  }
-
   /// The next message, which must be a [field] response to request [id].
   Future<DimseMessage> _responseTo(int id, int field) async {
-    final message = await _receive();
+    final message = await _channel.receive();
     if (message.commandField != field ||
         message.messageIdBeingRespondedTo != id) {
-      await _protocolAbort('expected the response to message $id, but got '
-          '$message responding to ${message.messageIdBeingRespondedTo}');
+      await _channel
+          .protocolAbort('expected the response to message $id, but got '
+              '$message responding to ${message.messageIdBeingRespondedTo}');
     }
     return message;
-  }
-
-  Future<Never> _protocolAbort(String problem) async {
-    await _dul.abort();
-    throw DimseProtocolException(problem);
   }
 
   @override
