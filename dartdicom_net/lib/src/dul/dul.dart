@@ -8,6 +8,7 @@ import '../pdu/pdus.dart';
 import '../transport/transport.dart';
 import 'framer.dart';
 import '../timeouts.dart';
+import '../trace/record.dart';
 import '../trace/trace.dart';
 
 /// The DICOM Upper Layer service for one association (PS3.8 §9), in either
@@ -258,7 +259,7 @@ final class Dul {
     final from = _state;
     _armIdle(); // anything received restarts the network timer
     final cell = transition(from, event);
-    _trace(
+    trace?.recordPdu(
         outgoing: false,
         summary: pdu == null
             ? (invalid == null
@@ -274,8 +275,8 @@ final class Dul {
                 cell.$1 == UlAction.ar8
                     ? (isRequestor ? UlState.sta9 : UlState.sta10)
                     : cell.$2),
-        pdu: pdu,
-        bytes: bytes);
+        bytes: bytes,
+        carriesValues: pdu is PDataTf);
     if (cell == null) {
       // A blank cell: the peer did something PS3.8 gives no meaning here.
       return _protocolAbort('unexpected ${pdu ?? event.name} in ${from.name}',
@@ -477,12 +478,12 @@ final class Dul {
   /// Sends [pdu]. A failed send means the connection is gone.
   Future<void> _transmit(Pdu pdu) async {
     final bytes = pdu.encode();
-    _trace(
+    trace?.recordPdu(
         outgoing: true,
         summary: '${pdu.summary} (${bytes.length} B)',
         transition: _localTransition,
-        pdu: pdu,
-        bytes: bytes);
+        bytes: bytes,
+        carriesValues: pdu is PDataTf);
     _localTransition = null;
     try {
       await _transport.send(bytes);
@@ -496,11 +497,10 @@ final class Dul {
   Future<void> _sendAbort({required int source, required int reason}) async {
     final abort = Abort(source: source, reason: reason);
     final bytes = abort.encode();
-    _trace(
+    trace?.recordPdu(
         outgoing: true,
         summary: '${abort.summary} (${bytes.length} B)',
         transition: _localTransition,
-        pdu: abort,
         bytes: bytes);
     _localTransition = null;
     try {
@@ -525,27 +525,6 @@ final class Dul {
       // Already closed.
     }
     await _pdus.cancel();
-  }
-
-  /// Records one PDU (or transport event) at [TraceLevel.pdu], with its
-  /// bytes at [TraceLevel.hex] unless they are P-DATA, which carries values
-  /// ([Trace.showValues] shows those too).
-  void _trace(
-      {required bool outgoing,
-      required String summary,
-      required String? transition,
-      required Pdu? pdu,
-      required Uint8List? bytes}) {
-    final trace = this.trace;
-    if (trace == null || !trace.includes(TraceLevel.pdu)) return;
-    final showBytes = trace.includes(TraceLevel.hex) &&
-        bytes != null &&
-        (pdu is! PDataTf || trace.showValues);
-    trace.record(PduTrace(
-        outgoing: outgoing,
-        summary: summary,
-        transition: transition,
-        bytes: showBytes ? bytes : null));
   }
 
   static String _transitionText(

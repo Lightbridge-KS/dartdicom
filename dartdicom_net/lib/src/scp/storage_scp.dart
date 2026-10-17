@@ -8,6 +8,7 @@ import '../dul/dul.dart';
 import '../errors.dart';
 import '../sink/instance_sink.dart';
 import '../timeouts.dart';
+import '../trace/record.dart';
 import '../trace/trace.dart';
 import '../transport/socket_transport.dart';
 
@@ -158,12 +159,10 @@ final class StorageScp {
           dul, DimseChannel(dul, rq.userInformation.maxLength), contexts, _sink,
           peerAeTitle: rq.callingAeTitle.trim());
     } on Object catch (e) {
-      if (trace case final trace? when trace.includes(TraceLevel.pdu)) {
-        trace.record(PduTrace(
-            outgoing: false,
-            summary: 'association ended: '
-                '${e is DimseException ? e.message : e.runtimeType}'));
-      }
+      trace?.recordPdu(
+          outgoing: false,
+          summary: 'association ended: '
+              '${e is DimseException ? e.message : e.runtimeType}');
       try {
         await dul.abort();
       } on Object {
