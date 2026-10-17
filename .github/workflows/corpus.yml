@@ -1,6 +1,6 @@
 # I-11 and I-10 on the pinned pydicom-data corpus (M2's exit): pydicom's
 # golden reading of every file, then dartdicom's, compared by
-# dartdicom/test/corpus_test.dart (a ratchet over corpus_expected.txt). Then
+# dartdicom/test/gates/corpus_test.dart (a ratchet over corpus_expected.txt). Then
 # the written-file gate over the corpus: pydicom and DCMTK read every file
 # dartdicom writes from it.
 name: corpus
@@ -42,7 +42,7 @@ jobs:
           uv run --locked fixtures golden --corpus
       - name: compare (a missing corpus fails here)
         working-directory: dartdicom
-        run: dart test test/corpus_test.dart
+        run: dart test test/gates/corpus_test.dart
         env:
           DARTDICOM_CORPUS_REQUIRED: "1"
       - name: written-file gate over the corpus

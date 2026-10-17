@@ -136,7 +136,7 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 │   ├── lib/src/redact/           Redactor; dump
 │   ├── lib/src/io/               FileSource, ZLibDeflateCodec: the only dart:io in this package
 │   ├── tool/gen_dictionary/      source.dart (release pin + SHA-256) · parse.dart · emit.dart · value_types.dart (I-19) · naming.dart (S4) → lib/src/**/*.g.dart (committed)
-│   ├── test/                     includes architecture_test.dart, vs_pydicom_test.dart and compile_fail/ (I-24)
+│   ├── test/                     one folder per lib/src folder (io/ for lib/io.dart), tool/, gates/ (whole-library gates over the fixtures and corpora: architecture, I-9, I-10, I-11, I-30, the written-file gate), support/, compile_fail/ (I-24) *(amended)*
 │   └── example/  README.md  llms.txt  CHANGELOG.md  LICENSE  pubspec.yaml
 ├── dartdicom_pixel/lib/src/      pixel_array/ · decode/ · lut/ · display/ · codec/
 ├── dartdicom_net/lib/src/        pdu/ · fsm/ · dul/ · acse/ · dimse/ · association/ (+ presentation_contexts.dart, F29) · scp/ · sink/ · transport/ · trace/ · errors.dart
@@ -201,7 +201,7 @@ Two rules *inside* packages:
 | Rule | Tool |
 |---|---|
 | package-level dependencies | `scripts/check_deps.sh` (yq over every `pubspec.yaml`) in CI, plus the `depend_on_referenced_packages` lint |
-| no platform imports in core | `dartdicom/test/architecture_test.dart` scans `lib/` for `dart:io`, `dart:ffi`, `dart:html`, `dart:js_interop` and `package:flutter`, excluding `io.dart` and `src/io/` |
+| no platform imports in core | `dartdicom/test/gates/architecture_test.dart` scans `lib/` for `dart:io`, `dart:ffi`, `dart:html`, `dart:js_interop` and `package:flutter`, excluding `io.dart` and `src/io/` |
 | web compatibility, end to end | `dart test -p chrome` and a `dart compile wasm` check fail if `dart:io` leaks into the web build |
 | net's layering | `dartdicom_net/test/architecture_test.dart` |
 
@@ -255,7 +255,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Change how file meta is derived or validated (I-17), or the implementation UID and version name | `dartdicom/lib/src/file/`, `dartdicom/lib/src/uid/implementation.dart` |
 | Change the folder layout or naming of stored files | `dartdicom_net/lib/src/sink/` |
 | Add a character set | `dartdicom/lib/src/charset/` |
-| Add a transfer syntax or refusal to the written-file gate | `dartdicom/tool/write_all.dart` (the matrix and the refusals it expects), `dartdicom/test/written_test.dart` (the comparison), `dartdicom/test/dcmdump_allowlist.txt` (DCMTK messages allowed, by version, each with its reason) |
+| Add a transfer syntax or refusal to the written-file gate | `dartdicom/tool/write_all.dart` (the matrix and the refusals it expects), `dartdicom/test/gates/written_test.dart` (the comparison), `dartdicom/test/dcmdump_allowlist.txt` (DCMTK messages allowed, by version, each with its reason) |
 | Add a lenient-read repair | by what it repairs: file framing in `dartdicom/lib/src/read/parser.dart`; an element header (VR, explicit or implicit) in `read/parse/header.dart`; one that is only reported in `read/parse/checks.dart`; structure (truncation, trailing bytes) in `read/parse/walker.dart`. Plus its `RepairKind` in `dartdicom/lib/src/dataset/read_report.dart` and a case in `test/read/lenient_test.dart` *(amended)* |
 | Add an uncompressed transfer syntax | `dartdicom/lib/src/uid/transfer_syntax.dart`: a descriptor (explicit VR? endianness, deflated, encapsulated) that both the reader and the writer read |
 | Change PHI masking | `dartdicom/lib/src/redact/` |
@@ -285,7 +285,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 
 | # | Invariant | Checked by |
 |---|---|---|
-| I-1 ★ | Core `lib/` imports no `dart:io`, `dart:ffi`, `dart:html`, `dart:js_interop` or Flutter (excluding `io.dart` and `src/io/`) | `dartdicom/test/architecture_test.dart` |
+| I-1 ★ | Core `lib/` imports no `dart:io`, `dart:ffi`, `dart:html`, `dart:js_interop` or Flutter (excluding `io.dart` and `src/io/`) | `dartdicom/test/gates/architecture_test.dart` |
 | I-2 ★ | Core tests pass compiled to JS, and core compiles to Wasm | CI `dart test -p chrome`, `dart compile wasm` |
 | I-3 ★ | Each package's `dependencies` are within its row of §4 | `scripts/check_deps.sh` in CI |
 | I-4 ★ | No import of an undeclared package | `depend_on_referenced_packages` lint |
@@ -293,7 +293,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-6 ★ | In net, only `transport/`, `scp/` and `sink/` import `dart:io` | `dartdicom_net/test/architecture_test.dart` |
 | I-7 ★ | No top-level mutable variables (`var`, `late`, non-const `final`) in any `lib/` | architecture test (grep) |
 | I-8 ★ | Generated files match the generator's output for the pinned release | `dart run tool/gen_dictionary/main.dart --check` in `.github/workflows/generated.yml` (on generator or output changes; the release XML is cached) |
-| I-9 ★ | Element values never appear in exception messages, the default `toString`, trace output, or the `ReadReport` | PHI canary test (`dartdicom/test/phi_canary_test.dart` over the `phi_canary` fixture): sentinel values in names, IDs, descriptions, a private element and nested sequence text; truncated and damaged reads, wrong-type reads, write failures and repairs must not show them *(amended)* |
+| I-9 ★ | Element values never appear in exception messages, the default `toString`, trace output, or the `ReadReport` | PHI canary test (`dartdicom/test/gates/phi_canary_test.dart` over the `phi_canary` fixture): sentinel values in names, IDs, descriptions, a private element and nested sequence text; truncated and damaged reads, wrong-type reads, write failures and repairs must not show them *(amended)* |
 | I-10 ★ | Reading then writing an untouched file in the same transfer syntax gives byte-identical output, under F41's rule (repaired files reach a fixpoint; Deflated compares the inflated body) *(amended)* | golden round-trip test, corpus test |
 | I-11 ★ | Every element agrees with pydicom on the fixture corpus | `vs_pydicom_test.dart` against `fixtures/data/golden/` |
 | I-12 ★ | PDUs and command sets are byte-identical to pynetdicom's encoders | net golden test against pynetdicom-generated fixtures |
@@ -314,7 +314,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-27 ★ | Writing text the declared charset can't encode, or non-ASCII text with no (0008,0005), fails with a `DicomWriteException` that names the tag and suggests the fix | writer test (F35) |
 | I-28 ★ | The committed fixtures, golden files and `PROVENANCE.md` reproduce exactly from the pinned tools | `fixtures check` via `scripts/check_fixtures.sh` (in the dry gates) |
 | I-29 ★ | In core, only `vr/value_codec.dart` imports `vr/codec/`; the rest of `lib/` reaches the codec families through it (`export … show`) | architecture test |
-| I-30 ★ | Malformed input never throws anything but a `DicomParseException` on read (a `DicomWriteException` on write), and the inflater only a `FormatException` (PRD *Untrusted input*) | `dartdicom/test/fuzz_test.dart`: seeded, 2,000 cases per group in the dry gates over mutated fixtures, the force path and the inflater; `just fuzz` runs more |
+| I-30 ★ | Malformed input never throws anything but a `DicomParseException` on read (a `DicomWriteException` on write), and the inflater only a `FormatException` (PRD *Untrusted input*) | `dartdicom/test/gates/fuzz_test.dart`: seeded, 2,000 cases per group in the dry gates over mutated fixtures, the force path and the inflater; `just fuzz` runs more |
 | I-31 ★ | In core, only `read/parser.dart` imports `read/parse/`; the rest of `lib/` reads through `parsePart10` and `parseDataset` | architecture test |
 
 ## 9. CI and release

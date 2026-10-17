@@ -16,8 +16,8 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
 
-import 'support/f41.dart';
-import 'support/golden.dart';
+import '../support/f41.dart';
+import '../support/golden.dart';
 
 const _corpus = 'pydicom-data';
 

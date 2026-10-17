@@ -1,7 +1,7 @@
 // The written-file gate's first half (M2 step 6, PRD C-11): reads every
 // .dcm under the given roots and writes each into the transfer syntaxes it
 // can be written in, asserting the refusals F41 promises for the rest.
-// pydicom, DCMTK and test/written_test.dart then read what it wrote.
+// pydicom, DCMTK and test/gates/written_test.dart then read what it wrote.
 //
 //   dart run tool/write_all.dart --out <dir> <root>[=<golden root>] ...
 //

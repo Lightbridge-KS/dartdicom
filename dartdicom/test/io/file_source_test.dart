@@ -11,7 +11,7 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:test/test.dart';
 
-import 'support/f41.dart' show flatten;
+import '../support/f41.dart' show flatten;
 
 /// A CT fixture with 8 MiB of Pixel Data, written to [dir].
 File _bigFile(Directory dir) {

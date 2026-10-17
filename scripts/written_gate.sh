@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The written-file gate (M2 step 6; PRD C-11, I-18): dartdicom writes every
 # fixture (with --corpus, every cached pydicom-data file) in each transfer
-# syntax it can; pydicom reads what it wrote; test/written_test.dart compares
+# syntax it can; pydicom reads what it wrote; test/gates/written_test.dart compares
 # that with dartdicom's reading and the source, and runs DCMTK's dcmdump.
 #   scripts/written_gate.sh             the committed fixtures (a dry gate)
 #   scripts/written_gate.sh --corpus    the corpus (the CI corpus job)
@@ -25,5 +25,5 @@ trap '[ -n "${KEEP_WRITTEN:-}" ] && echo "kept $out" || rm -rf "$out"' EXIT
 
 (cd dartdicom && dart run tool/write_all.dart --out "$out" "${sources[@]}")
 (cd fixtures && uv run --locked fixtures golden --written "$out")
-(cd dartdicom && DARTDICOM_WRITTEN="$out" dart test --reporter=failures-only test/written_test.dart)
+(cd dartdicom && DARTDICOM_WRITTEN="$out" dart test --reporter=failures-only test/gates/written_test.dart)
 echo "written files: pydicom, dartdicom and DCMTK agree"

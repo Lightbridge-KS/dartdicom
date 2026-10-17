@@ -5,4 +5,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/../dartdicom"
 DARTDICOM_FUZZ_CASES="${1:-100000}" DARTDICOM_FUZZ_SEED="${2:-0}" \
-  dart test -p vm test/fuzz_test.dart
+  dart test -p vm test/gates/fuzz_test.dart

@@ -17,8 +17,8 @@ import 'package:dartdicom/src/dictionary/dictionary.dart' show describeTag;
 import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
 
-import 'support/f41.dart' show contentRepairs;
-import 'support/golden.dart';
+import '../support/f41.dart' show contentRepairs;
+import '../support/golden.dart';
 
 void main() {
   final dir = Platform.environment['DARTDICOM_WRITTEN'];

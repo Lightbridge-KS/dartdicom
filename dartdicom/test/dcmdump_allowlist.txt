@@ -1,4 +1,4 @@
-# DCMTK messages the written-file gate allows (test/written_test.dart),
+# DCMTK messages the written-file gate allows (test/gates/written_test.dart),
 # beyond those the source file already raises: `<version prefix> <regex>`,
 # one per line, e.g. `3.6 ^W: DcmItem: …`. Each entry names why.
 

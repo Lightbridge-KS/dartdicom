@@ -12,7 +12,7 @@ import 'package:dartdicom/io.dart';
 import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
 
-import 'support/f41.dart';
+import '../support/f41.dart';
 
 const _zlib = ZLibDeflateCodec();
 

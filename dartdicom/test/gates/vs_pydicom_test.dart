@@ -10,7 +10,7 @@ import 'dart:io';
 import 'package:dartdicom/dartdicom.dart';
 import 'package:test/test.dart';
 
-import 'support/golden.dart';
+import '../support/golden.dart';
 
 /// Every registered transfer syntax reads (C-08).
 bool _readable(String uid) => TransferSyntax.of(Uid(uid)) != null;
