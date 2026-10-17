@@ -10,7 +10,7 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M2–M4, filling out core, net and pixel, in any order. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Now:** M2 `dartdicom` P0, planned 2026-10-17 in 10 steps (below); M3 and M4 follow in any order. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
 **Next:** M5, 0.1.0 and the first consumer.
 
 ## Roadmap
@@ -78,14 +78,52 @@ Planned 2026-10-17. Each step ends with the dry gates green.
 
 ### M2 `dartdicom` P0 complete
 
-- [ ] C-01–C-12, C-16, C-20, including the lenient reading of real-world data in C-10
-- [ ] Fuzz the parser (bounds-checked lengths)
+Planned 2026-10-17. Decisions:
+- the exit corpus is the committed fixtures plus pydicom-data from the cache;
+- written files are checked with pydicom and DCMTK, with dciodvfy at M5;
+- inflate is pure Dart and deflate goes through zlib;
+- the implementation identity changes only when the file did;
+- private blocks resolve tags (surface S9);
+- `Uid.generate` uses `2.25.` + a UUID (S10).
+
+Each step ends with the dry and floor gates green, and `just live` after a read or write change.
+
+- [ ] **0. Docs.** The decisions above; blueprint F40 (`lib/src/source/`) and F41 (I-10 by rule); surface S9 and S10; the PRD's dciodvfy clause moved to M5.
+- [ ] **1. Dataset API, UIDs, the encapsulation bug.**
+  - The untyped getters (F36), `ds.element(tag)`, `setRaw`, `privateBlock`, `Uid.generate` / `isValid`.
+  - The writer refuses to change between encapsulated and native syntaxes while Pixel Data is present.
+  - I-23's property test.
+- [ ] **2. Sources, random access, deferral.**
+  - `source/` (a leaf) and `DicomFile.fromSource`.
+  - `FileSource` / `FileSourceOpener`, `SourceChangedException` (DA2), `deferSize`, I-14.
+  - D1's async prefix read with geometric growth; a nesting-depth limit.
+  - Writing a partial read is refused.
+- [ ] **3. Corpus census.**
+  - `golden.py` hardened (per-element errors, raw forms, stamps, `force`); `fixtures golden --corpus`.
+  - A shared comparator with named tolerances.
+  - `corpus_test.dart` as a ratchet over `corpus_expected.yaml`; the CI `corpus` job.
+- [ ] **4a. Deflated.** Pure-Dart inflate with a size cap; `ZLibDeflateCodec`; inflate in both parse entry points.
+- [ ] **4b. Big Endian and the cross-syntax writer.**
+  - `WriteOptions`; the copy rule by VR; the swap rule (OW Pixel Data by Bits Allocated, 8-bit included).
+  - Stale group lengths dropped.
+  - Writing BE is refused with the fix named.
+- [ ] **4c. Implementation identity and I-17.** "Changed" means not verbatim, or the meta was edited.
+- [ ] **5. Lenient reading and `ReadReport`.** `force`, syntax detection, UN rules, pydicom's ambiguous-VR rules, truncation, wrong lengths, VM, `tags`.
+- [ ] **6. Written-file gate.** `tool/write_all.dart` → pydicom exports → the Dart comparator (I-18); `dcmdump` with a versioned allowlist.
+- [ ] **7. Fuzz, PHI canary, close.** The parser, inflater and `force` path fuzzed; the sentinel scenario (I-9).
 
 **Exit:**
-- every element agrees with pydicom on the fixture corpus (I-11)
-- round-trips are byte-identical (I-10)
-- pydicom reads everything written, and `dciodvfy` passes where it applies
-- the PHI canary test passes (I-9)
+- every element agrees with pydicom on the committed fixtures **and** the pydicom-data corpus (I-11), with the corpus exceptions that remain listed and reasoned;
+- round trips are byte-identical under F41's rule (I-10);
+- pydicom and DCMTK read everything written (`dciodvfy` moves to M5);
+- the PHI canary passes (I-9);
+- the parser, the inflater and the `force` path are fuzzed.
+
+**Tests that will flip:**
+- `vs_pydicom_test`'s readable set widens to Deflated and BE;
+- `round_trip_test` follows F41;
+- the pixel test's BE/Deflated skip goes;
+- an unknown VR code becomes a repair.
 
 ### M3 `dartdicom_net` P0 complete
 
@@ -108,6 +146,7 @@ Planned 2026-10-17. Each step ends with the dry gates green.
 
 - [ ] Publish `dartdicom`, `dartdicom_pixel` and `dartdicom_net` as `0.1.0-dev.N`, then `0.1.0`, core first
 - [ ] The first consumer integrates on each desktop OS it ships on
+- [ ] Written files pass `dciodvfy` (dicom3tools) where it applies (moved from M2, 2026-10-17)
 
 **Exit:** the PRD's first-consumer success criterion is met: query, retrieve and display with no sidecar runtime.
 
@@ -130,8 +169,9 @@ These run in order of demand:
 ## Open questions
 
 - **Before 1.0:** does PN become `PersonName`, and do DA/TM/DT become date types (C-15)? Typed tags fix each VR's Dart type in every generated constant, so this is free only before 1.0 (data §8).
-- **M2:** when an existing file is rewritten, whose implementation identity goes into the meta (C-07)? Today `DicomFile.toBytes` keeps (0002,0012) and (0002,0013) as read and fills in dartdicom's only where one is missing. PS3.10 §7.1 says (0002,0012) identifies the implementation that wrote the file. Two side effects: (a) the two tags are filled independently, so a meta with another writer's class UID and no version name comes out as that UID plus `DARTDICOM 0.1.0`; (b) `contains` counts an empty element as present, so an empty (0002,0012) or (0002,0001), both Type 1, is written empty. pydicom 3.x keeps an existing value too, but fills in an empty class UID or version (`validate_file_meta`).
 - **M3:** which PACS products must the first consumer support, and do they support C-GET? The answer settles whether the default retrieve path is C-GET or C-MOVE. The tracer uses C-GET, which the test Orthanc supports (confirmed 2026-10-17).
+
+**Answered 2026-10-17, planning M2:** when a file is rewritten, its meta names dartdicom (0002,0012/0013) only if the file changed: an edit, a re-encode, or an edited meta. Otherwise the pair is kept as read, so I-10 holds. A missing or empty pair is filled, both tags together.
 
 **Answered 2026-10-17** (recorded in blueprint §3):
 

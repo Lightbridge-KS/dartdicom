@@ -1,5 +1,5 @@
 ---
-summary: The developer-facing and agent-facing surface of the dartdicom packages. Covers the cheat sheet; the public API map per package and entry import; onboarding with the pydicom → dartdicom mapping; usage journeys (read and display, query and retrieve, modify and write); the error and return contract; naming and ergonomics rules (D4, typed tags, sync vs async); agent experience (AX); options. Surface decisions S1–S8 (2026-10-16/17) are recorded in §8.
+summary: The developer-facing and agent-facing surface of the dartdicom packages. Covers the cheat sheet; the public API map per package and entry import; onboarding with the pydicom → dartdicom mapping; usage journeys (read and display, query and retrieve, modify and write); the error and return contract; naming and ergonomics rules (D4, typed tags, sync vs async); agent experience (AX); options. Surface decisions S1–S10 (2026-10-16/17) are recorded in §8.
 read_when:
   - adding, naming or changing any public symbol, getter, option or exception
   - writing README, quick-starts, examples, dartdoc, or llms.txt
@@ -355,6 +355,8 @@ Everything is passed per call or per instance. Nothing is global (PRD constraint
 | S5 | Final status of multi-response operations | **Decided.** Complete normally on Success, Warning or Cancel; a final Failure becomes a stream error; retrieves also carry the final status in their last progress event (refines D3) | §5 |
 | S6 | Name of the generated tag namespace | **Decided 2026-10-17: `DicomTags`** (`DicomTags.patientName`). `Tags` collided with `package:test`'s `Tags` (found in M0), which would give every consumer test file an `ambiguous_import`. Rejected: static constants on `Tag` (the generator would have to emit the whole `Tag` type, with its hand-written members in a template), and keeping `Tags` with a documented `hide`. | §6.2 |
 | S7 | How a bare dataset (no Part 10 header) is decoded and encoded | **Decided 2026-10-17:** `Dataset.fromBytes(bytes, transferSyntax:)` / `ds.toBytes(transferSyntax:)`, mirroring `DicomFile`; the required `transferSyntax:` tells the two apart. Rejected: a `DatasetCodec` value (it keeps I-5 strict, but is harder to find). Blueprint F38. | §2 |
+| S9 | How code reaches private elements (C-06) | **Decided 2026-10-17:** `ds.privateBlock(group, creator, {create})` returns a `PrivateBlock` (or `null`); `block.tag(offset)` gives the full tag; values go through the untyped getters and `setRaw`. Mirrors pydicom's `private_block`. Rejected: a block with its own getters and setters. | §2 |
+| S10 | What `Uid.generate()` uses as its root (C-16) | **Decided 2026-10-17:** `2.25.` + a random UUID (v4) as an integer (PS3.5 §B.2), so no registration is needed; `prefix:` takes an organization's root. Rejected: registering a project root. | §2 |
 | S8 | What `DisplayBuffer` holds | **Decided 2026-10-17:** 8-bit `gray` (one byte per pixel), with `toRgba()` as a method because it allocates 4× the memory. Color (X-08) adds channels later. Rejected: an `rgba` getter. | §2, §4.1 |
 
 **Rejected:**
@@ -371,6 +373,7 @@ Everything is passed per call or per instance. Nothing is global (PRD constraint
 - **Read results:** `file.report`, `ReadReport.isClean` / `summary()`, `MissingElementException`, `DicomParseException`, `DicomWriteException`, `DimseFailureException`
 - **Network:** `RetrieveProgress.total` / `status`, `PresentationContexts.*`, `retrieveStorageClasses`, `timeouts`, `trace`
 - **Pixels:** `DisplayBuffer.gray` / `toRgba()` / `width` / `height` *(amended: S8)*
+- **Added in M2 planning (2026-10-17):** `ds.privateBlock` / `PrivateBlock.tag` (S9), `Uid.generate` / `isValid` (S10), `ds.element(tag)` (the untyped escape hatch F36 otherwise closes), `DicomFile.fromSource(ByteSource)`, `ByteSource` / `BytesSource` / `SourceOpener`, `DeflateCodec`, `SourceChangedException`
 - **Added in M1 planning (2026-10-17):** `Dataset.fromBytes` / `toBytes` (S7), `ds.transferSyntax`, `FileMetaInformation.forInstance` / `toHeaderBytes()`, `ReceivedInstance.sourceAeTitle` / `fileMeta`, `PresentationContexts.commonStorage`
 - **DICOMweb:** `retry`
 

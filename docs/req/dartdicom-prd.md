@@ -206,7 +206,7 @@ The first consumer doesn't need this package, so all of it is P1 or later.
 - **Fidelity.**
   - Every element agrees with pydicom 3.x across the supported fixture corpus.
   - There are no known data-corrupting bugs.
-  - pydicom and DCMTK can read every file the library writes. Where it applies, the file also passes `dciodvfy` (dicom3tools).
+  - pydicom and DCMTK can read every file the library writes. Where it applies, the file also passes `dciodvfy` (dicom3tools), checked before the 0.1.0 release *(amended 2026-10-17: dciodvfy moved from M2 to M5)*.
 - **Interop.** C-ECHO, C-FIND, C-GET, C-MOVE and C-STORE pass against Orthanc, DCMTK and pynetdicom.
 - **First consumer.** On each desktop OS it ships on, the Flutter desktop tool queries a real PACS, retrieves a study and displays its images, with no sidecar runtime.
 - **Platforms.** The core's tests pass on the VM, and the core compiles for JS and Wasm.

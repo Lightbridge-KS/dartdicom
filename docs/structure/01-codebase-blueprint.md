@@ -74,6 +74,8 @@ These are the places where two inputs disagree, or where a single input disagree
 | F36 | Surface §2 (family list getters such as `getInts(Tag)` for untyped tags) **×** DA1: `One` and `Many` implement `Tag`, so `getInts(DicomTags.patientName)` compiles | Accepted, because a subtype can't be excluded. At runtime it throws an `ArgumentError` naming the tag's typed accessor (`use ds.get(DicomTags.patientName)`). |
 | F37 | PRD C-03 (generated constants named `Tags`) **×** `package:test`, which also exports `Tags` (found in M0: `ambiguous_import` in any test importing both) | Renamed to `DicomTags` (surface S6). The generator emits `abstract final class DicomTags`. *(PRD C-03, design and surface examples amended.)* |
 | F38 | §3 tree (`DicomFile`, `FileMetaInformation` in `dataset/`) and surface `Dataset.fromBytes` **×** I-5 (`dataset/` imports nothing from `read/` or `write/`): `fromBytes`/`toBytes` must call the parser and writer (found planning M1) | `DicomFile` and `FileMetaInformation` move to `lib/src/file/`, which may import `read/` and `write/`; meta derivation (I-17) lands there too. `read/` and `write/` see only `Dataset` and never import `file/`. **Decided 2026-10-17:** net's raw codec is `Dataset.fromBytes(bytes, transferSyntax:)` / `ds.toBytes(transferSyntax:)`, so I-5 is narrowed: only `dataset/dataset.dart` may import them. Rejected: a `DatasetCodec` value. |
+| F40 | §3 tree (`ByteSource`, `SourceOpener` in `read/`) **×** I-5: a deferred value is held by `dataset/`, which may not import `read/` (found planning M2) | They move to a new leaf folder, `lib/src/source/` (`ByteSource`, `BytesSource`, `SourceOpener`, `BytesSourceOpener`, `NeedMoreBytes`), which `dataset/` and `read/` both import. An architecture test keeps `source/` a leaf. Every `SourceOpener` must be sendable (I-14). |
+| F41 | I-10 (untouched round-trips are byte-identical) **×** C-10 (lenient reads repair malformed data) and Deflated (re-compression differs) | **I-10 applies by rule:** a clean read (no repairs), the same transfer syntax, not Big Endian, not force-read, and consistent SOP UIDs. A repaired file must reach a fixpoint instead: its output re-reads clean and equal, and writing that again is byte-identical. The writer never reproduces malformed bytes. For Deflated, I-10 holds on the inflated body; writing always re-deflates. (Decided with M2's plan, 2026-10-17.) |
 | F39 | Data §4.2 (storing costs no parsing) and §6 (`DirectorySink` lays files out by Study and Series UID) **×** the wire: a C-STORE-RQ command carries only the SOP Class and Instance UIDs | `DirectorySink` parses the received bytes' header (`stopBeforePixels`) to build the path, then stores the bytes unchanged. A UID that fails `^[0-9.]+$`, or a sink exception, gets a failure C-STORE-RSP (`0xC211`, as pynetdicom does); the retrieve carries on. *(Data §4.2 amended.)* |
 
 **Verb → action → field.** Each verb the first consumer needs, traced to the action that performs it and the field it lands on:
@@ -128,7 +130,8 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 │   ├── lib/src/errors.dart       DicomException (open base) + the sealed DicomDataException tree (F30)
 │   ├── lib/src/dataset/          Dataset (+ its fromBytes/toBytes entry points, F38), DataElement, Sequence, ReadReport (F28)
 │   ├── lib/src/file/             DicomFile, FileMetaInformation, file meta derivation (F38) *(amended)*
-│   ├── lib/src/read/             ByteSource, SourceOpener, Parser, ReadOptions, repairs, deflate
+│   ├── lib/src/source/           ByteSource, BytesSource, SourceOpener, BytesSourceOpener, NeedMoreBytes: a leaf (F40) *(amended)*
+│   ├── lib/src/read/             Parser, ReadOptions, repairs, inflate
 │   ├── lib/src/write/            Writer, WriteOptions
 │   ├── lib/src/redact/           Redactor; dump
 │   ├── lib/src/io/               FileSource, ZLibDeflateCodec: the only dart:io in this package
@@ -210,7 +213,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 |---|---|---|
 | `ByteSource` | `BytesSource` (all platforms) returns views; `FileSource` (io) returns owned copies (F19) | truncated or fuzzed `BytesSource`; browser prefix adapter |
 | `SourceOpener` | `FileSourceOpener(path, size, modified)`, which throws `SourceChangedException` on a mismatch (F16); `BytesSourceOpener` | counting opener; an opener that reports a changed file |
-| `DeflateCodec` | pure-Dart default (core), `ZLibDeflateCodec` (io) | each one reads the other's output |
+| `DeflateCodec` | pure-Dart **inflate** default (core; its deflate throws and names the fix), `ZLibDeflateCodec` (io), or a caller-supplied codec on the web *(amended: decided 2026-10-17, M2)* | pure inflate reads zlib's output |
 | `CharsetResolver` | standard resolver | override for mislabeled data |
 | `Transport` | `SocketTransport` | `InMemoryTransport.pair()`: SCU and SCP in one test, no sockets |
 | `InstanceSink` | `DirectorySink` (net `sink/`): stores as received, UID-only paths, write then rename | `MemorySink` |
@@ -289,7 +292,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-7 ★ | No top-level mutable variables (`var`, `late`, non-const `final`) in any `lib/` | architecture test (grep) |
 | I-8 ★ | Generated files match the generator's output for the pinned release | `dart run tool/gen_dictionary/main.dart --check` in `.github/workflows/generated.yml` (on generator or output changes; the release XML is cached) |
 | I-9 ★ | Element values never appear in exception messages, the default `toString`, trace output, or the `ReadReport` | PHI canary test: fixtures carry sentinel values; the test triggers errors and traces and asserts the sentinels are absent |
-| I-10 ★ | Reading then writing an untouched file in the same transfer syntax gives byte-identical output | golden round-trip test |
+| I-10 ★ | Reading then writing an untouched file in the same transfer syntax gives byte-identical output, under F41's rule (repaired files reach a fixpoint; Deflated compares the inflated body) *(amended)* | golden round-trip test, corpus test |
 | I-11 ★ | Every element agrees with pydicom on the fixture corpus | `vs_pydicom_test.dart` against `fixtures/data/golden/` |
 | I-12 ★ | PDUs and command sets are byte-identical to pynetdicom's encoders | net golden test against pynetdicom-generated fixtures |
 | I-13 ★ | The state table defines every (event, state) pair of PS3.8 Table 9-10 (19 × 13) | state-machine test |
@@ -355,3 +358,5 @@ Structural amendments are applied in place and marked *(amended)*. Behavioral on
 | F35: how to write non-ASCII text when no Specific Character Set is present | data §3.4, surface §4.2 | **behavior** | decided 2026-10-16: the write fails, with a message saying how to fix it. Rejected: adding ISO_IR 192 automatically. Applied. |
 | F38: `file/` for `DicomFile`; `Dataset.fromBytes` / `toBytes`; I-5 narrowed | this doc §3, §4, I-5; surface §2 | **behavior** (public API) | decided 2026-10-17; applied |
 | F39: `DirectorySink` parses the header for its path | data §4.2 | structure | applied |
+| F40: `lib/src/source/` for `ByteSource` and `SourceOpener` | this doc §3 | structure | applied |
+| F41: I-10 applies by rule | this doc I-10 | **behavior** (what is promised) | decided 2026-10-17 with M2's plan; applied |
