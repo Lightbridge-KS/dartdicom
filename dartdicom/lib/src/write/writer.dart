@@ -32,15 +32,6 @@ Uint8List encodeDataset(Dataset ds, TransferSyntax ts,
   return out.takeBytes();
 }
 
-/// Whether [seq], or any sequence nested in it, has an item that changed
-/// since it was read.
-bool sequenceModified(Sequence seq) => seq.any((item) =>
-    isModified(item) ||
-    item.elements.any((e) =>
-        e.vr == Vr.SQ &&
-        rawValueOf(e) != null &&
-        sequenceModified(e.value as Sequence)));
-
 final class _Writer {
   _Writer(this.ts) : endian = ts.littleEndian ? Endian.little : Endian.big;
 
@@ -51,97 +42,96 @@ final class _Writer {
     final source = ds.transferSyntax == null
         ? null
         : TransferSyntax.of(ds.transferSyntax!);
-    final sameEndian = source != null && source.littleEndian == ts.littleEndian;
-    final sameEncoding = sameEndian && source.explicitVr == ts.explicitVr;
     var charset = inherited;
     for (final element in ds.elements) {
       if (element.tag.value == _specificCharacterSet) {
         charset = element.value as List<String>;
       }
-      _writeElement(out, element, charset,
-          sameEndian: sameEndian, sameEncoding: sameEncoding);
+      _writeElement(out, element, charset, source);
     }
   }
 
-  void _writeElement(
-      BytesBuilder out, DataElement element, List<String> charset,
-      {required bool sameEndian, required bool sameEncoding}) {
+  /// Writes [element], read from [source] (null if it was never read): its
+  /// bytes as read when [_canCopy] allows, otherwise its value re-encoded.
+  void _writeElement(BytesBuilder out, DataElement element,
+      List<String> charset, TransferSyntax? source) {
     final raw = rawValueOf(element);
-    final vr = element.vr;
-    if (vr == Vr.SQ) {
-      final seq = element.value as Sequence;
-      if (raw != null && sameEncoding && !sequenceModified(seq)) {
-        _header(out, element, raw.bytes.length, undefined: raw.undefinedLength);
-        out.add(raw.bytes);
-      } else {
-        final body = BytesBuilder(copy: false);
-        for (final item in seq) {
-          final encoded = BytesBuilder(copy: false);
-          writeDataset(encoded, item, charset);
-          body
-            ..add(_itemHeader(encoded.length))
-            ..add(encoded.takeBytes());
-        }
-        _header(out, element, body.length);
-        out.add(body.takeBytes());
-      }
-      return;
-    }
-    final reusable = raw != null &&
-        sameEndian &&
-        (!isCharsetVr(vr) || _sameTerms(raw.specificCharacterSet, charset)) &&
-        (!raw.undefinedLength || sameEncoding);
-    if (reusable) {
-      _header(out, element, raw.bytes.length, undefined: raw.undefinedLength);
+    if (raw != null && _canCopy(element, raw, charset, source)) {
+      _writeHeader(out, element, raw.bytes.length,
+          undefined: raw.undefinedLength);
       out.add(raw.bytes);
       return;
     }
-    final value = encodeValue(element.tag, vr, element.value,
-        littleEndian: ts.littleEndian, specificCharacterSet: charset);
-    _header(out, element, value.length);
+    final value = element.vr == Vr.SQ
+        ? _encodeItems(element.value as Sequence, charset)
+        : encodeValue(element.tag, element.vr, element.value,
+            littleEndian: ts.littleEndian, specificCharacterSet: charset);
+    _writeHeader(out, element, value.length);
     out.add(value);
   }
 
-  void _header(BytesBuilder out, DataElement element, int length,
+  /// Whether [raw], the bytes of [element] as read from [source], mean the
+  /// same in [ts] and can be written back unchanged (I-10).
+  bool _canCopy(DataElement element, RawValue raw, List<String> charset,
+      TransferSyntax? source) {
+    final sameEndian = source != null && source.littleEndian == ts.littleEndian;
+    final sameEncoding = sameEndian && source.explicitVr == ts.explicitVr;
+    final vr = element.vr;
+    if (vr == Vr.SQ) {
+      // The bytes hold every item's element headers, so they need the same
+      // VR encoding too, and no item may have changed.
+      return sameEncoding && !_sequenceModified(element.value as Sequence);
+    }
+    return sameEndian &&
+        (!isCharsetVr(vr) || _sameTerms(raw.specificCharacterSet, charset)) &&
+        (!raw.undefinedLength || sameEncoding);
+  }
+
+  /// Encodes the items of [seq], each with a defined length.
+  Uint8List _encodeItems(Sequence seq, List<String> charset) {
+    final body = BytesBuilder(copy: false);
+    for (final item in seq) {
+      final encoded = BytesBuilder(copy: false);
+      writeDataset(encoded, item, charset);
+      body
+        ..add(_itemHeader(encoded.length))
+        ..add(encoded.takeBytes());
+    }
+    return body.takeBytes();
+  }
+
+  // An element header in each encoding (PS3.5 §7.1):
+  //
+  //   implicit          tag(4) length32(4)               8 bytes
+  //   explicit, short   tag(4) VR(2) length16(2)         8 bytes
+  //   explicit, long    tag(4) VR(2) 00 00 length32(4)  12 bytes
+  void _writeHeader(BytesBuilder out, DataElement element, int length,
       {bool undefined = false}) {
     final tag = element.tag;
     final vr = element.vr;
     final lengthField = undefined ? 0xFFFFFFFF : length;
+    final header = ByteData(ts.explicitVr && vr.hasLongLength ? 12 : 8)
+      ..setUint16(0, tag.group, endian)
+      ..setUint16(2, tag.element, endian);
     if (!ts.explicitVr) {
-      out.add((ByteData(8)
-            ..setUint16(0, tag.group, endian)
-            ..setUint16(2, tag.element, endian)
-            ..setUint32(4, lengthField, endian))
-          .buffer
-          .asUint8List());
-      return;
+      header.setUint32(4, lengthField, endian);
+    } else {
+      final code = latin1.encode(vr.code);
+      header
+        ..setUint8(4, code[0])
+        ..setUint8(5, code[1]);
+      if (vr.hasLongLength) {
+        header.setUint32(8, lengthField, endian);
+      } else if (length > 0xFFFF) {
+        throw DicomWriteException(
+            'a ${vr.code} value is $length bytes, more than the 65535 an '
+            'Explicit VR element of this VR can hold',
+            tag: tag);
+      } else {
+        header.setUint16(6, length, endian);
+      }
     }
-    final code = latin1.encode(vr.code);
-    if (vr.hasLongLength) {
-      out.add((ByteData(12)
-            ..setUint16(0, tag.group, endian)
-            ..setUint16(2, tag.element, endian)
-            ..setUint8(4, code[0])
-            ..setUint8(5, code[1])
-            ..setUint32(8, lengthField, endian))
-          .buffer
-          .asUint8List());
-      return;
-    }
-    if (length > 0xFFFF) {
-      throw DicomWriteException(
-          'a ${vr.code} value is $length bytes, more than the 65535 an '
-          'Explicit VR element of this VR can hold',
-          tag: tag);
-    }
-    out.add((ByteData(8)
-          ..setUint16(0, tag.group, endian)
-          ..setUint16(2, tag.element, endian)
-          ..setUint8(4, code[0])
-          ..setUint8(5, code[1])
-          ..setUint16(6, length, endian))
-        .buffer
-        .asUint8List());
+    out.add(header.buffer.asUint8List());
   }
 
   Uint8List _itemHeader(int length) => (ByteData(8)
@@ -151,6 +141,15 @@ final class _Writer {
       .buffer
       .asUint8List();
 }
+
+/// Whether [seq], or any sequence nested in it, has an item that changed
+/// since it was read.
+bool _sequenceModified(Sequence seq) => seq.any((item) =>
+    isModified(item) ||
+    item.elements.any((e) =>
+        e.vr == Vr.SQ &&
+        rawValueOf(e) != null &&
+        _sequenceModified(e.value as Sequence)));
 
 bool _sameTerms(List<String> a, List<String> b) {
   if (a.length != b.length) return false;

@@ -1,5 +1,6 @@
-// The write path: edits, derived file meta (I-17), strict text (I-27), and
-// bare datasets for DIMSE. VM only: starts from the fixtures on disk.
+// The write path: edits, derived file meta (I-17), strict text (I-27), bare
+// datasets for DIMSE, and element header limits. VM only: starts from the
+// fixtures on disk.
 @TestOn('vm')
 library;
 
@@ -150,6 +151,36 @@ void main() {
           options: const ReadOptions(stopBeforePixels: true));
       expect(head.dataset.contains(DicomTags.pixelData), isFalse);
       expect(head.dataset.get(DicomTags.rows), 128);
+    });
+  });
+
+  group('element headers', () {
+    // LO has a 16-bit length in Explicit VR. Text pads to even length, so
+    // 65534 bytes is the longest value that fits.
+    Dataset withDescription(int length) =>
+        Dataset()..set(DicomTags.studyDescription, 'A' * length);
+
+    test('a short explicit VR value over 65535 bytes fails, naming the tag',
+        () {
+      expect(
+          () => withDescription(65536)
+              .toBytes(transferSyntax: TransferSyntaxes.explicitVrLittleEndian),
+          throwsA(isA<DicomWriteException>().having(
+              (e) => e.message,
+              'message',
+              allOf(contains('StudyDescription'), contains('65535'),
+                  isNot(contains('AAAA'))))));
+    });
+
+    test('65534 bytes fit, and Implicit VR has room for more', () {
+      for (final (ts, length) in [
+        (TransferSyntaxes.explicitVrLittleEndian, 65534),
+        (TransferSyntaxes.implicitVrLittleEndian, 65536),
+      ]) {
+        final bytes = withDescription(length).toBytes(transferSyntax: ts);
+        final back = Dataset.fromBytes(bytes, transferSyntax: ts);
+        expect(back.get(DicomTags.studyDescription)?.length, length);
+      }
     });
   });
 }
