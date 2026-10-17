@@ -66,6 +66,30 @@ void main() {
     await assoc.release();
   }, skip: _skip);
 
+  test('C-STORE a fixture, then find it back', () async {
+    final file = DicomFile.fromBytes(
+        File('../fixtures/data/synthetic/sc_rgb.dcm').readAsBytesSync());
+    final ae = ApplicationEntity(aeTitle: 'DARTDICOM', requestedContexts: [
+      ...PresentationContexts.storage(
+          [SopClasses.secondaryCaptureImageStorage]),
+      ...PresentationContexts.studyRootQueryRetrieve,
+    ]);
+    final assoc = await ae.associate(_host, _port, aeTitle: _aet);
+    expect(await assoc.sendCStore(file), isA<DimseSuccess>());
+    final ds = file.dataset;
+    final found = await assoc
+        .sendCFind(Dataset()
+          ..set(DicomTags.queryRetrieveLevel, 'IMAGE')
+          ..set(DicomTags.studyInstanceUid,
+              ds.require(DicomTags.studyInstanceUid))
+          ..set(DicomTags.seriesInstanceUid,
+              ds.require(DicomTags.seriesInstanceUid))
+          ..set(DicomTags.sopInstanceUid, ds.require(DicomTags.sopInstanceUid)))
+        .toList();
+    expect(found, hasLength(1));
+    await assoc.release();
+  }, skip: _skip);
+
   test('C-FIND at STUDY, then SERIES level', () async {
     const ae = ApplicationEntity(
         aeTitle: 'DARTDICOM',

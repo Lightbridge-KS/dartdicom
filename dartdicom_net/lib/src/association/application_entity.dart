@@ -25,6 +25,7 @@ final class ApplicationEntity {
     this.maxPduLength = 16384,
     this.timeouts = const Timeouts(),
     this.trace,
+    this.deflateCodec,
   });
 
   /// This AE's title (the calling AE title): 1–16 characters.
@@ -46,6 +47,11 @@ final class ApplicationEntity {
   /// Where the protocol is traced, if anywhere (PRD N-14). It shows no
   /// element value unless [Trace.showValues] is set.
   final Trace? trace;
+
+  /// Compresses datasets that `sendCStore` sends on a Deflated context,
+  /// e.g. `ZLibDeflateCodec()` from `package:dartdicom/io.dart`. Without
+  /// one, a Deflated file is sent re-encoded in an uncompressed syntax.
+  final DeflateCodec? deflateCodec;
 
   /// Connects to [host]:[port] and associates with the AE titled [aeTitle].
   ///

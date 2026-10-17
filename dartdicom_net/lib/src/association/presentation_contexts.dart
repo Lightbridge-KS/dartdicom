@@ -50,6 +50,16 @@ enum QueryRetrieveModel {
 /// Ready-made context lists for `ApplicationEntity.requestedContexts`
 /// (surface S2).
 abstract final class PresentationContexts {
+  /// A context for each storage SOP class of [classes], offering
+  /// [transferSyntaxes]: what `sendCStore` needs. Propose a compressed
+  /// syntax to send compressed files as they are.
+  static List<PresentationContext> storage(List<Uid> classes,
+          {List<Uid> transferSyntaxes = PresentationContext.uncompressed}) =>
+      [
+        for (final c in classes)
+          PresentationContext(c, transferSyntaxes: transferSyntaxes),
+      ];
+
   /// C-ECHO.
   static const verification = [PresentationContext(SopClasses.verification)];
 

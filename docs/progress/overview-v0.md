@@ -159,10 +159,13 @@ Each step ends with the dry and floor gates green, and `just live` after a netwo
   - Cancelling a find or get subscription sends C-CANCEL-RQ at once (pynetdicom's three-element command set, checked against its vector). It then drains to the final response within one DIMSE timeout; a get keeps storing what is in flight.
   - `cancel()` always completes normally, and the association is free afterwards. Live, a find cancelled on its first Orthanc match leaves the association usable.
   - The channel sends whole messages in order. `_operation` runs on a `StreamController` that stops reading while its subscription is paused.
-- [x] **5. Trace (N-14).** `Trace(sink, level:, showValues:)` on `ApplicationEntity`; `TraceSink` (`TraceSink.lines` for a logger); a sealed `TraceEvent` of `DimseTrace` (the message by name, its command fields, its dataset by size) and `PduTrace` (a value-free summary, the transition such as `Sta6 + Evt10 → DT-2 → Sta6`, and hex for association, release and abort PDUs only).
+- [x] **5. Trace (N-14)** (`b7f59e0`). `Trace(sink, level:, showValues:)` on `ApplicationEntity`; `TraceSink` (`TraceSink.lines` for a logger); a sealed `TraceEvent` of `DimseTrace` (the message by name, its command fields, its dataset by size) and `PduTrace` (a value-free summary, the transition such as `Sta6 + Evt10 → DT-2 → Sta6`, and hex for association, release and abort PDUs only).
   - Instance UIDs and error comments are masked unless `showValues: true`, which also shows P-DATA hex.
   - `trace/` sits at layer rank 0 in the architecture test. A sink that throws never disturbs the association.
-- [ ] **6. C-STORE SCU (N-10).** `sendCStore(DicomFile)`; SCU+SCP roles for classes both requested and retrieved; `ApplicationEntity.deflateCodec`.
+- [x] **6. C-STORE SCU (N-10).** `sendCStore(DicomFile)` → `DimseStatus`, live into Orthanc and found back by C-FIND. The C-STORE-RQ command set matches pynetdicom's three vectors.
+  - **Context choice:** the file's own syntax when the core can write it, so an untouched dataset goes out byte for byte; otherwise Explicit then Implicit VR LE for a native file; otherwise a `StateError` naming the context to propose.
+  - **Roles:** a class both requested and retrieved is proposed with both SCU and SCP roles. `AcceptedContext.scuRole` falls back to the default roles when the acceptor sends no reply.
+  - **Also:** `ApplicationEntity.deflateCodec` and `PresentationContexts.storage`.
 - [ ] **7. StorageScp (N-09, F3).** The listener, acceptor ACSE, the serve loop, the shared store handler; `peerAeTitle`; concurrency-safe `DirectorySink`; an acceptor fuzz.
 - [ ] **8. C-MOVE SCU (N-09).** `sendCMove`; compose `host-gateway`; `retrieve_and_render --via=move`.
 - [ ] **9. Interop matrix.** DCMTK (`dcmqrscp`, `storescp`, `storescu`) and pynetdicom (`qrscp`, `storescp`, `storescu`) peers via `scripts/interop_peers.sh`; `interop.yml` nightly.

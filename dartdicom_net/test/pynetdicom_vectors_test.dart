@@ -85,6 +85,25 @@ void main() {
       }
     });
 
+    test('storeCommand builds C-STORE-RQ, with and without a move originator',
+        () {
+      final stores = vectors.where((v) => v['name'] == 'C-STORE-RQ');
+      expect(stores, hasLength(3));
+      for (final v in stores) {
+        final expected = _command((v['command']! as List<Object?>).cast());
+        final built = storeCommand(
+            expected.require(DicomTags.messageId),
+            expected.require(DicomTags.affectedSopClassUid),
+            expected.require(DicomTags.affectedSopInstanceUid),
+            moveOriginatorAeTitle:
+                expected.get(DicomTags.moveOriginatorApplicationEntityTitle),
+            moveOriginatorMessageId:
+                expected.get(DicomTags.moveOriginatorMessageId));
+        expect(_hexOf(DimseMessage(1, built).encodeCommand()),
+            _hexOf(DimseMessage(1, expected).encodeCommand()));
+      }
+    });
+
     test('cancelCommand builds C-CANCEL-RQ', () {
       final v = vectors.firstWhere((v) => v['name'] == 'C-CANCEL-RQ');
       final expected = _command((v['command']! as List<Object?>).cast());

@@ -78,6 +78,23 @@ final class DimseMessage {
       'context $contextId${dataset == null ? '' : ', ${dataset!.length}-byte dataset'})';
 }
 
+/// C-STORE-RQ [messageId] for one instance (PS3.7 §9.3.1.1); a store that
+/// is a C-MOVE sub-operation names the move's originator.
+Dataset storeCommand(int messageId, String sopClassUid, String sopInstanceUid,
+    {String? moveOriginatorAeTitle, int? moveOriginatorMessageId}) {
+  final ds = requestCommand(CommandField.cStoreRq, messageId, Uid(sopClassUid),
+      hasDataset: true, priority: mediumPriority)
+    ..set(DicomTags.affectedSopInstanceUid, sopInstanceUid);
+  if (moveOriginatorAeTitle != null) {
+    ds.set(
+        DicomTags.moveOriginatorApplicationEntityTitle, moveOriginatorAeTitle);
+  }
+  if (moveOriginatorMessageId != null) {
+    ds.set(DicomTags.moveOriginatorMessageId, moveOriginatorMessageId);
+  }
+  return ds;
+}
+
 /// C-CANCEL-RQ for request [messageId] (PS3.7 §9.3.2.3): only the command
 /// field, the ID it responds to and "no dataset", as pynetdicom sends it.
 Dataset cancelCommand(int messageId) => Dataset()

@@ -25,7 +25,7 @@ import 'application_entity.dart';
 /// D3).
 final class Association {
   Association._(this._dul, this.calledAeTitle, this.acceptedContexts,
-      int peerMaxPduLength)
+      int peerMaxPduLength, this._deflateCodec)
       : _channel = DimseChannel(_dul, peerMaxPduLength);
 
   /// Requests an association over [transport] with [rq].
@@ -35,10 +35,11 @@ final class Association {
         Dul.requestor(transport, timeouts: ae.timeouts, trace: ae.trace);
     final ac = await dul.requestAssociation(rq);
     return Association._(dul, rq.calledAeTitle, negotiatedContexts(rq, ac),
-        ac.userInformation.maxLength);
+        ac.userInformation.maxLength, ae.deflateCodec);
   }
 
   final Dul _dul;
+  final DeflateCodec? _deflateCodec;
   final DimseChannel _channel;
   var _lastMessageId = 0;
   var _busy = false;
@@ -60,6 +61,77 @@ final class Association {
         final rsp = await _responseTo(id, CommandField.cEchoRsp);
         return DimseStatus(rsp.status ?? 0xC000);
       });
+
+  /// Sends [file]'s dataset with C-STORE-RQ and returns the response's
+  /// status (PRD N-10): a value, failures included (design D3).
+  ///
+  /// The presentation context is chosen in this order:
+  /// 1. one in the file's own transfer syntax, when the core can write it
+  ///    (not Big Endian; Deflated only with `ApplicationEntity.deflateCodec`):
+  ///    an untouched dataset goes out byte for byte;
+  /// 2. for a native file, Explicit VR Little Endian, then Implicit: the
+  ///    dataset re-encoded;
+  /// 3. otherwise a [StateError] naming the context to propose.
+  ///
+  /// Only contexts where this side holds the SCU role count. A dataset the
+  /// writer refuses throws its [DicomWriteException].
+  Future<DimseStatus> sendCStore(DicomFile file,
+          {String? moveOriginatorAeTitle, int? moveOriginatorMessageId}) =>
+      _exclusive(() async {
+        final ds = file.dataset;
+        final sopClass = ds.get(DicomTags.sopClassUid) ??
+            file.meta.mediaStorageSopClassUid?.value;
+        final sopInstance = ds.get(DicomTags.sopInstanceUid) ??
+            file.meta.mediaStorageSopInstanceUid?.value;
+        if (sopClass == null || sopInstance == null) {
+          throw ArgumentError.value(file, 'file',
+              'has no SOP Class or Instance UID to store it under');
+        }
+        final context = _storeContext(
+            Uid(sopClass), file.meta.transferSyntaxUid ?? ds.transferSyntax);
+        final bytes = ds.toBytes(
+            transferSyntax: context.transferSyntax,
+            deflateCodec: _deflateCodec);
+        final id = _nextMessageId();
+        await _channel.send(DimseMessage(
+            context.id,
+            storeCommand(id, sopClass, sopInstance,
+                moveOriginatorAeTitle: moveOriginatorAeTitle,
+                moveOriginatorMessageId: moveOriginatorMessageId),
+            bytes));
+        final rsp = await _responseTo(id, CommandField.cStoreRsp);
+        return DimseStatus(rsp.status ?? 0xC000);
+      });
+
+  AcceptedContext _storeContext(Uid sopClass, Uid? fileSyntax) {
+    final usable = [
+      for (final c in acceptedContexts)
+        if (c.abstractSyntax == sopClass && c.scuRole) c,
+    ];
+    if (usable.isEmpty) {
+      throw StateError('C-STORE needs an accepted presentation context for '
+          '${sopClass.value} with this side as SCU, and the peer accepted '
+          'none; propose one in ApplicationEntity.requestedContexts (e.g. '
+          'PresentationContexts.storage)');
+    }
+    final own = fileSyntax == null ? null : TransferSyntax.of(fileSyntax);
+    bool writable(TransferSyntax ts) =>
+        ts.littleEndian && (!ts.deflated || _deflateCodec != null);
+    AcceptedContext? inSyntax(Uid ts) =>
+        usable.where((c) => c.transferSyntax == ts).firstOrNull;
+    if (own != null && writable(own)) {
+      if (inSyntax(own.uid) case final c?) return c;
+    }
+    if (own == null || !own.encapsulated) {
+      for (final ts in PresentationContext.uncompressed) {
+        if (inSyntax(ts) case final c?) return c;
+      }
+    }
+    throw StateError('the file is in ${fileSyntax?.value ?? 'an unknown '
+            'syntax'}, and the peer accepted no context it can be sent in for '
+        '${sopClass.value}; propose PresentationContext(${sopClass.value}, '
+        'transferSyntaxes: [${fileSyntax?.value ?? '…'}])');
+  }
 
   /// Sends C-FIND-RQ with [query] and streams the matches (PRD N-07).
   ///

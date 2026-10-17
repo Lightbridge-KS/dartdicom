@@ -7,9 +7,11 @@ import '../pdu/pdus.dart';
 // what the peer's answer means.
 
 /// The A-ASSOCIATE-RQ from [callingAeTitle] to [calledAeTitle]: [contexts]
-/// as `(abstract syntax, transfer syntaxes)` with odd IDs from 1, and an SCP
-/// role selection item for each of [scpRoleClasses] (to receive a C-GET's
-/// C-STORE sub-operations, PS3.4 §C.4.3.3).
+/// as `(abstract syntax, transfer syntaxes)` with odd IDs from 1, and a role
+/// selection item for each of [scpRoleClasses] (to receive a C-GET's
+/// C-STORE sub-operations, PS3.4 §C.4.3.3). A role item proposing SCP alone
+/// would take away the SCU role (PS3.7 §D.3.3.4), so a class this side also
+/// sends ([contexts] proposes it twice) gets both.
 ///
 /// Throws an [ArgumentError] for more than 128 contexts or a bad AE title.
 AssociateRq buildAssociateRq({
@@ -42,26 +44,30 @@ AssociateRq buildAssociateRq({
       implementationVersionName: dartdicomImplementationVersionName,
       roles: [
         for (final sopClass in {...scpRoleClasses})
-          RoleSelection(sopClass.value, scu: false, scp: true),
+          RoleSelection(sopClass.value,
+              scu: contexts.where((c) => c.$1 == sopClass).length > 1,
+              scp: true),
       ],
     ),
   );
 }
 
 /// The contexts of [rq] that [ac] accepted, mapped back by ID (an AC
-/// carries no abstract syntax). A role the AC doesn't echo is not granted.
+/// carries no abstract syntax), with the roles this side holds on each: the
+/// AC's role reply for its SOP class, or with none, the default roles (this
+/// side SCU only, PS3.7 §D.3.3.4).
 List<AcceptedContext> negotiatedContexts(AssociateRq rq, AssociateAc ac) {
   final proposed = {for (final c in rq.contexts) c.id: c};
-  final scpRoles = {
-    for (final role in ac.userInformation.roles)
-      if (role.scp) role.sopClass,
+  final roles = {
+    for (final role in ac.userInformation.roles) role.sopClass: role,
   };
   return List.unmodifiable([
     for (final result in ac.results)
       if (proposed[result.id] case final p? when result.accepted)
         AcceptedContext(
             result.id, Uid(p.abstractSyntax), Uid(result.transferSyntax),
-            scpRole: scpRoles.contains(p.abstractSyntax)),
+            scuRole: roles[p.abstractSyntax]?.scu ?? true,
+            scpRole: roles[p.abstractSyntax]?.scp ?? false),
   ]);
 }
 
@@ -77,7 +83,7 @@ void _checkAeTitle(String ae, String name) {
 /// One presentation context the peer accepted.
 final class AcceptedContext {
   const AcceptedContext(this.id, this.abstractSyntax, this.transferSyntax,
-      {this.scpRole = false});
+      {this.scuRole = true, this.scpRole = false});
 
   /// The presentation context ID.
   final int id;
@@ -88,6 +94,11 @@ final class AcceptedContext {
   /// The transfer syntax every dataset on this context is encoded in.
   final Uid transferSyntax;
 
+  /// Whether this side may act as SCU for [abstractSyntax]: send its
+  /// requests, such as C-STORE. The default role, unless role selection
+  /// took it away.
+  final bool scuRole;
+
   /// Whether this side may act as SCP for [abstractSyntax] (role selection
   /// accepted): needed to receive a C-GET's C-STORE sub-operations.
   final bool scpRole;
@@ -95,5 +106,5 @@ final class AcceptedContext {
   @override
   String toString() =>
       'AcceptedContext($id, ${abstractSyntax.value}, ${transferSyntax.value}'
-      '${scpRole ? ', SCP role' : ''})';
+      '${scuRole ? '' : ', no SCU role'}${scpRole ? ', SCP role' : ''})';
 }
