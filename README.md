@@ -13,6 +13,43 @@ Pure-Dart DICOM packages: read, modify, write, display and exchange DICOM data o
 
 Not a medical device; not for diagnostic use.
 
+## Use from GitHub
+
+Until the packages are on pub.dev, depend on them from this repository with a `git` dependency for each package you use. `dartdicom_web` is still a scaffold, so leave it out.
+
+```yaml
+dependencies:
+  dartdicom:
+    git:
+      url: https://github.com/Lightbridge-KS/dartdicom.git
+      path: dartdicom
+      ref: <commit or tag>
+  dartdicom_pixel:
+    git:
+      url: https://github.com/Lightbridge-KS/dartdicom.git
+      path: dartdicom_pixel
+      ref: <commit or tag>
+  dartdicom_net:
+    git:
+      url: https://github.com/Lightbridge-KS/dartdicom.git
+      path: dartdicom_net
+      ref: <commit or tag>
+
+# Required: dartdicom_pixel and dartdicom_net depend on dartdicom from
+# pub.dev, and pub takes a package from only one source.
+dependency_overrides:
+  dartdicom:
+    git:
+      url: https://github.com/Lightbridge-KS/dartdicom.git
+      path: dartdicom
+      ref: <commit or tag>
+```
+
+- **The override is required.** Without it, `dart pub get` (or `flutter pub get`) fails with "dartdicom_net from git is forbidden".
+- **Pin `ref`** to a commit or a tag, the same one in every entry, so every machine builds the same code. `pubspec.lock` records the exact commit. To move on, change `ref` and run `dart pub upgrade`.
+- **Working on dartdicom and an app side by side:** put `path:` entries for the same packages in a `pubspec_overrides.yaml` next to the app's `pubspec.yaml`, and keep that file out of git. It points the app at your local checkout while `pubspec.yaml` keeps the git entries for everyone else.
+- **SDK:** Dart `^3.6.0`, or a Flutter whose bundled Dart is at least 3.6. `dartdicom_net` runs on native platforms only.
+
 ## Development
 
 - **Dart:** any SDK at or above the package floor (`^3.6.0`). The dev toolchain is pinned in [`mise.toml`](mise.toml); run `mise install` if you use [mise](https://mise.jdx.dev).
