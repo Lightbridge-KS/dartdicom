@@ -8,7 +8,9 @@ import '../errors.dart';
 /// LUT Descriptor's first mapped value and bits per entry, and the LUT Data
 /// entries.
 final class LutTable {
-  LutTable._(this.firstMapped, this.bits, this.entries);
+  /// A table of [entries] from [firstMapped] on, of [bits] bits each.
+  LutTable(this.firstMapped, this.bits, List<int> entries)
+      : entries = Uint16List.fromList(entries).asUnmodifiableView();
 
   /// Reads [item]'s LUT Descriptor and LUT Data. OW LUT Data is in 16-bit
   /// words of the dataset's byte order, [littleEndian]; US data is already
@@ -36,8 +38,7 @@ final class LutTable {
       throw InvalidPixelModule(DicomTags.lutData,
           'holds fewer entries than (0028,3002) LUTDescriptor declares');
     }
-    return LutTable._(descriptor[1], bits,
-        Uint16List.fromList(data.sublist(0, count)).asUnmodifiableView());
+    return LutTable(descriptor[1], bits, data.sublist(0, count));
   }
 
   /// The stored or modality value that maps to the first entry.

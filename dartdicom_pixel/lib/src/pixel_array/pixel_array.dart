@@ -3,9 +3,10 @@ import 'dart:typed_data';
 import 'package:dartdicom/dartdicom.dart';
 
 import '../display/display_buffer.dart';
+import '../display/gray.dart';
 import '../errors.dart';
 import '../lut/modality_lut.dart';
-import '../lut/voi_window.dart';
+import '../lut/voi.dart';
 import 'pixel_module.dart';
 
 /// The shape of a [PixelArray]: frames, then rows, columns and samples per
@@ -145,13 +146,18 @@ final class PixelArray {
     return out;
   }
 
-  /// Applies the Modality LUT, then [window],
-  /// then MONOCHROME1 inversion, giving 8-bit gray (PRD X-04, X-07).
+  /// The frame as 8-bit gray (PRD X-04, X-07): its Modality LUT, then
+  /// [voi], then MONOCHROME1's inversion.
+  ///
+  /// With no [voi], the frame's own (blueprint F45): its dataset's VOI LUT
+  /// or window for this frame, functional groups included, else
+  /// [autoWindow]. Pass a [VoiWindow] to window it yourself, e.g. while the
+  /// user drags; the decode isn't repeated.
   ///
   /// Throws an [UnsupportedPixelEncoding] for anything but MONOCHROME1 and
   /// MONOCHROME2: color and palette display is X-08. A buffer is one frame,
   /// so an array of several throws a [StateError]: display `.frame(i)`.
-  DisplayBuffer toDisplay(VoiWindow window) {
+  DisplayBuffer toDisplay([Voi? voi]) {
     _oneFrame('toDisplay');
     if (!module.isMonochrome) {
       throw UnsupportedPixelEncoding(
@@ -160,14 +166,26 @@ final class PixelArray {
           '`values`',
           tag: DicomTags.photometricInterpretation);
     }
-    final modality = _modality.single;
-    final invert = module.photometricInterpretation == 'MONOCHROME1';
-    final gray = Uint8List(_data.length);
-    for (var i = 0; i < _data.length; i++) {
-      final level = window.apply(modality.apply(_data[i]));
-      gray[i] = invert ? 255 - level : level;
-    }
+    final own = switch (dataset) {
+      final ds? when voi == null => datasetVoi(ds, frame: firstFrame),
+      _ => voi,
+    };
+    final gray = toGray(_data,
+        modality: _modality.single,
+        voi: own ?? autoWindow(),
+        invert: module.photometricInterpretation == 'MONOCHROME1',
+        bitsStored: module.bitsAllocated == 1 ? 1 : module.bitsStored,
+        signed: dtype.signed);
     return DisplayBuffer(columns, rows, gray);
+  }
+
+  /// The window that spans the frame's own modality values, ignoring the
+  /// Pixel Padding Value: what [toDisplay] uses when the dataset states no
+  /// VOI, and a starting point for a window the user drags.
+  VoiWindow autoWindow() {
+    final (lo, hi) = modalityRange() ?? (0.0, 0.0);
+    // The LINEAR window whose ramp runs from exactly lo to hi.
+    return VoiWindow((lo + hi) / 2 + 0.5, hi - lo + 1);
   }
 
   /// The smallest and largest modality values, ignoring the Pixel Padding

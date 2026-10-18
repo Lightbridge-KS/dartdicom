@@ -117,14 +117,24 @@ void main() {
           (record['frames']! as List<Object?>).cast<Map<String, Object?>>();
       compared++;
       try {
-        final px =
+        final ds =
             DicomFile.fromBytes(File('$corpusRoot/$path').readAsBytesSync())
-                .dataset
-                .pixels;
+                .dataset;
+        final px = ds.pixels;
+        frames:
         for (final (f, golden) in frames.indexed) {
-          if (modalitySha(px.frame(f).toModality()) != golden['modality']) {
+          final frame = px.frame(f);
+          if (modalitySha(frame.toModality()) != golden['modality']) {
             failures[path] = 'frame $f: modality values differ';
             break;
+          }
+          for (final variant in (golden['voi']! as List<Object?>)
+              .cast<Map<String, Object?>>()) {
+            if (voiMismatch(ds, frame, variant) case final problem?) {
+              failures[path] = 'frame $f, ${variant['kind']} '
+                  '${variant['index']}: $problem';
+              break frames;
+            }
           }
         }
       } on DicomException catch (e) {

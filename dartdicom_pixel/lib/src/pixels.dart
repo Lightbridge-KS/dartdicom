@@ -2,7 +2,7 @@ import 'package:dartdicom/dartdicom.dart';
 
 import 'decode/native.dart';
 import 'errors.dart';
-import 'lut/voi_window.dart';
+import 'lut/voi.dart';
 import 'pixel_array/pixel_array.dart';
 import 'pixel_array/pixel_module.dart';
 
@@ -13,20 +13,17 @@ extension DatasetPixels on Dataset {
   /// [InvalidPixelModule] if the Image Pixel module is missing or invalid.
   PixelData get pixels => PixelData(this);
 
-  /// The VOI window to display [frame] with: the first Window Center and
-  /// Width if the dataset has them, otherwise the full range of the frame's
-  /// modality values, ignoring the Pixel Padding Value.
-  VoiWindow voiWindow({int frame = 0}) {
-    final centers = _finite(this, DicomTags.windowCenter);
-    final widths = _finite(this, DicomTags.windowWidth);
-    if (centers.isNotEmpty && widths.isNotEmpty && widths.first >= 1) {
-      return VoiWindow(centers.first, widths.first);
-    }
-    final range = pixels.frame(frame).modalityRange() ?? (0.0, 0.0);
-    final (lo, hi) = range;
-    // The window whose linear ramp runs from exactly lo to hi.
-    return VoiWindow((lo + hi) / 2 + 0.5, hi - lo + 1);
-  }
+  /// Frame [frame]'s VOI as this dataset states it (surface S11): a
+  /// [VoiLut] from the VOI LUT Sequence, or a [VoiWindow] from Window Center
+  /// and Width with its VOI LUT Function, from the frame's functional groups
+  /// when it has them; `null` when there is none. A VOI LUT wins when
+  /// [preferLut], as pydicom's `apply_voi_lut`; [index] picks among several.
+  ///
+  /// Throws an [InvalidPixelModule] for a VOI that is there but invalid, an
+  /// [UnsupportedPixelEncoding] for an unknown VOI LUT Function, and a
+  /// [RangeError] for an [index] past them.
+  Voi? voi({int frame = 0, int index = 0, bool preferLut = true}) =>
+      datasetVoi(this, frame: frame, index: index, preferLut: preferLut);
 }
 
 /// A dataset's Pixel Data: its frames, decoded on demand.
@@ -53,18 +50,4 @@ final class PixelData {
   /// [frame] does.
   PixelArray allFrames() =>
       decodeNative(_dataset, module, 0, module.numberOfFrames);
-}
-
-/// [tag]'s values; NaN or an infinity is an [InvalidPixelModule].
-List<double> _finite(Dataset ds, Many<double> tag) {
-  final List<double> values;
-  try {
-    values = ds.getAll(tag);
-  } on DicomDataException {
-    throw InvalidPixelModule(tag, 'cannot be read as its VR');
-  }
-  if (values.any((v) => !v.isFinite)) {
-    throw InvalidPixelModule(tag, 'must hold finite numbers');
-  }
-  return values;
 }

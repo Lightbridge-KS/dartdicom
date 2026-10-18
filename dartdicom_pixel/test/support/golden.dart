@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_pixel/dartdicom_pixel.dart';
 
 /// [values] as little-endian bytes of [dtype], as pydicom's golden hashes
@@ -63,4 +64,47 @@ String modalitySha(Float64List values) {
     data.setFloat64(i * 8, v, Endian.little);
   }
   return sha256.convert(data.buffer.asUint8List()).toString();
+}
+
+/// One VOI variant of a LUT golden against dartdicom (I-33): `null` when
+/// every pixel of [frame]'s display is within one gray level of pydicom's
+/// `apply_voi_lut` (rescaled to 0–255, before MONOCHROME1's inversion),
+/// else what differs. [ds] is the dataset [frame] came from.
+String? voiMismatch(
+    Dataset ds, PixelArray frame, Map<String, Object?> variant) {
+  final kind = variant['kind']! as String;
+  final index = variant['index']! as int;
+  final error = variant['error'] as String?;
+  // No output range to rescale pydicom's values by: nothing to compare.
+  if (error == 'ZeroDivisionError') return null;
+  final Voi? voi;
+  final DisplayBuffer buffer;
+  try {
+    voi =
+        ds.voi(frame: frame.firstFrame, index: index, preferLut: kind == 'lut');
+    buffer = frame.toDisplay(voi);
+  } on PixelDataException catch (e) {
+    return error == null
+        ? 'refused, where pydicom did not: ${e.message}'
+        : null;
+  } on RangeError {
+    return error == null ? 'a RangeError, where pydicom had none' : null;
+  }
+  // pydicom refuses bits per entry other than 8 or 10–16; dartdicom takes
+  // 8–16, so only that refusal may go unmatched.
+  if (error != null) {
+    return error == 'NotImplementedError' ? null : 'pydicom raised $error';
+  }
+  if ((kind == 'lut') != (voi is VoiLut)) {
+    return 'chose ${voi.runtimeType} for a $kind';
+  }
+  final expected = base64Decode(variant['gray']! as String);
+  final invert = frame.module.photometricInterpretation == 'MONOCHROME1';
+  var worst = 0;
+  for (var i = 0; i < expected.length; i++) {
+    final gray = invert ? 255 - buffer.gray[i] : buffer.gray[i];
+    final off = (gray - expected[i]).abs();
+    if (off > worst) worst = off;
+  }
+  return worst <= 1 ? null : 'a pixel is $worst gray levels off';
 }

@@ -45,18 +45,22 @@ void main() {
     expect(ds.pixels.frame(0).toDisplay(VoiWindow(500, 1000)).gray, [255, 0]);
   });
 
-  test('voiWindow uses the first Window Center and Width', () {
+  test('ds.voi() is the first Window Center and Width by default', () {
     final ds = image16([0, 1])
       ..setAll(DicomTags.windowCenter, [40.0, -600.0])
       ..setAll(DicomTags.windowWidth, [400.0, 1500.0]);
-    final w = ds.voiWindow();
-    expect((w.center, w.width), (40.0, 400.0));
+    final w = ds.voi()! as VoiWindow;
+    expect((w.center, w.width, w.function), (40.0, 400.0, VoiFunction.linear));
+    final second = ds.voi(index: 1)! as VoiWindow;
+    expect((second.center, second.width), (-600.0, 1500.0));
   });
 
-  test('without a window, voiWindow spans the values, ignoring padding', () {
+  test('without a VOI, toDisplay() spans the values, ignoring padding', () {
     final ds = image16([-2000, -1000, 0, 1000], padding: -2000);
-    final buf = ds.pixels.frame(0).toDisplay(ds.voiWindow());
-    expect(buf.gray.sublist(1), [0, 128, 255]);
+    expect(ds.voi(), isNull);
+    final frame = ds.pixels.frame(0);
+    expect(frame.toDisplay().gray.sublist(1), [0, 128, 255]);
+    expect(frame.toDisplay(frame.autoWindow()).gray, frame.toDisplay().gray);
   });
 
   test('toRgba repeats gray into opaque RGBA', () {

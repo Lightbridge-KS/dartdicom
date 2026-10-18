@@ -19,6 +19,6 @@ void main() {
     ..setAll(DicomTags.windowWidth, [400.0])
     ..set(DicomTags.pixelData, hu.buffer.asUint8List());
 
-  final buf = ds.pixels.frame(0).toDisplay(ds.voiWindow());
+  final buf = ds.pixels.frame(0).toDisplay(); // its 40/400 window
   print('$buf: ${buf.gray}');
 }

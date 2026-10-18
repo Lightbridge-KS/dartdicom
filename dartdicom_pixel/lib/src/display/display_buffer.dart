@@ -4,7 +4,7 @@ import 'dart:typed_data';
 /// after the Modality and VOI LUTs (PRD X-07).
 ///
 /// ```dart
-/// final buf = ds.pixels.frame(0).toDisplay(ds.voiWindow());
+/// final buf = ds.pixels.frame(0).toDisplay();
 /// // Flutter: ui.decodeImageFromPixels(buf.toRgba(), buf.width, ...)
 /// ```
 final class DisplayBuffer {

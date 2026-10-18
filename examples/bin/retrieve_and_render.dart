@@ -107,7 +107,8 @@ Future<void> main(List<String> args) async {
   // Display: the stored Part 10 file → pixels → 8-bit gray.
   final file = await sink.stored.first.readAsDicom();
   final ds = file.dataset;
-  final buf = ds.pixels.frame(0).toDisplay(ds.voiWindow());
+  // The frame's own VOI, else the full range of its values.
+  final buf = ds.pixels.frame(0).toDisplay();
   final pgm = File('${out.path}/frame0.pgm');
   await pgm.writeAsBytes([
     ...'P5\n${buf.width} ${buf.height}\n255\n'.codeUnits,
