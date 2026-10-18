@@ -13,7 +13,7 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_pixel/dartdicom_pixel.dart';
 import 'package:test/test.dart';
 
-import 'support/golden.dart';
+import '../support/golden.dart';
 
 void main() {
   final goldens = Directory('../fixtures/data/golden')

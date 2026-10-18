@@ -6,7 +6,7 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_pixel/dartdicom_pixel.dart';
 import 'package:test/test.dart';
 
-import 'support/datasets.dart';
+import '../support/datasets.dart';
 
 /// A LUT item: [descriptor] and [entries] as US values.
 Dataset _lutItem(List<int> descriptor, List<int> entries) => Dataset()

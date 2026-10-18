@@ -7,5 +7,5 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export DARTDICOM_FUZZ_CASES="${1:-100000}" DARTDICOM_FUZZ_SEED="${2:-0}"
 (cd dartdicom && dart test -p vm test/gates/fuzz_test.dart)
-(cd dartdicom_pixel && dart test -p vm --timeout=none test/fuzz_test.dart)
+(cd dartdicom_pixel && dart test -p vm --timeout=none test/gates/fuzz_test.dart)
 (cd dartdicom_net && dart test -p vm --timeout=none test/fuzz_test.dart)

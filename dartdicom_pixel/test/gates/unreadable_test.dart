@@ -6,7 +6,7 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_pixel/dartdicom_pixel.dart';
 import 'package:test/test.dart';
 
-import 'support/datasets.dart';
+import '../support/datasets.dart';
 
 /// A valid 1 × 2, 16-bit image with [replace] swapped in by tag, plus
 /// [extra] elements.

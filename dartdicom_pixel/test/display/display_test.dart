@@ -5,7 +5,7 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_pixel/dartdicom_pixel.dart';
 import 'package:test/test.dart';
 
-import 'support/datasets.dart';
+import '../support/datasets.dart';
 
 void main() {
   group('VoiWindow follows PS3.3 C.11.2.1.2.1', () {

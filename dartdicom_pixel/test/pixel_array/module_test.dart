@@ -6,7 +6,7 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_pixel/dartdicom_pixel.dart';
 import 'package:test/test.dart';
 
-import 'support/datasets.dart';
+import '../support/datasets.dart';
 
 TypeMatcher<InvalidPixelModule> _invalid(Tag tag) =>
     isA<InvalidPixelModule>().having((e) => e.tag, 'tag', tag);

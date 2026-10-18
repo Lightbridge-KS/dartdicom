@@ -6,7 +6,7 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_pixel/dartdicom_pixel.dart';
 import 'package:test/test.dart';
 
-import 'support/datasets.dart';
+import '../support/datasets.dart';
 
 List<int> _int32s(List<int> values, Endian endian) {
   final data = ByteData(values.length * 4);
