@@ -37,7 +37,9 @@ ds.set(DicomTags.patientName, 'Anonymous');
 await File('anon.dcm').writeAsDicom(file);
 
 // Pixels → screen
-final img = ds.pixels.frame(0).toDisplay(ds.voiWindow());       // DisplayBuffer (8-bit)
+final frame = ds.pixels.frame(0);                               // PixelArray: stored values
+final img = frame.toDisplay();                                  // DisplayBuffer (8-bit), the frame's own VOI (S11)
+final hu = frame.toModality();                                  // Float64List, e.g. HU
 
 // PACS
 final ae = ApplicationEntity(aeTitle: 'MYAPP',
@@ -82,7 +84,8 @@ flowchart TD
     core --> tg["DicomTags · TransferSyntaxes · SopClasses (generated)"]
     core --> ro["ReadOptions · WriteOptions · ReadReport"]
     io["dartdicom/io.dart"] --> fx["File.readAsDicom / Sync · writeAsDicom / Sync"]
-    px["dartdicom_pixel"] --> pv["ds.pixels.frame(i) · PixelArray · toDisplay · DisplayBuffer"]
+    px["dartdicom_pixel"] --> pv["ds.pixels.frame(i) · allFrames · PixelArray · toModality · toDisplay · DisplayBuffer"]
+    px --> voi["ds.voi() · Voi: VoiWindow · VoiLut"]
     net["dartdicom_net"] --> ae["ApplicationEntity · associate"]
     net --> as["Association: sendCEcho / CFind / CGet / CMove / CStore · release · abort"]
     net --> scp["StorageScp · InstanceSink · DirectorySink"]
@@ -108,8 +111,10 @@ flowchart TD
 | `ReadOptions` · `WriteOptions` | per-call options | C-09, C-11 |
 | `file.report` / `ds.report` (`ReadReport`) | the repairs lenient reading made (C-10); `ds.report` for `Dataset.fromBytes` *(amended)* | C-10 |
 | `ds.dump()` | readable tree; values masked unless opted in | C-21 |
-| `ds.pixels.frame(i)` → `PixelArray` | decode one frame | X-01–X-03 |
-| `.toDisplay(window)` → `DisplayBuffer` · `ds.voiWindow()` | apply LUTs, get 8-bit pixels: `gray`, or `toRgba()` (S8) | X-04, X-07 |
+| `ds.pixels.frame(i)` → `PixelArray` · `ds.pixels.allFrames()` | decode one frame, or every frame into one buffer; `shape`, `dtype`, `values` (S12) | X-01–X-03 |
+| `.toModality()` → `Float64List` | the Modality LUT: rescale or table, for the frame (e.g. HU) | X-04 |
+| `ds.voi({frame, index, preferLut})` → `Voi?` · `VoiWindow(c, w, {function})` · `VoiLut` | the dataset's VOI for a frame, or one the app builds (S11) | X-04 |
+| `.toDisplay([voi])` → `DisplayBuffer` · `.autoWindow()` | apply the LUTs and get 8-bit pixels: `gray`, or `toRgba()` (S8). No argument means the frame's own VOI, else `autoWindow()` (S11) | X-04, X-07 |
 | `ApplicationEntity(...)` · `.associate(host, port, aeTitle:)` | configure and connect (S2) | N-05 |
 | `assoc.sendCEcho()` · `sendCStore(file)` | single-response operations → `DimseStatus` | N-06, N-10 |
 | `assoc.sendCFind(query)` | stream of matches (S5) | N-07 |
@@ -159,7 +164,9 @@ Future<void> main() async {
 | `ds.PatientName = 'X'` | `ds.set(DicomTags.patientName, 'X')` |
 | `del ds.PatientName` | `ds.remove(DicomTags.patientName)` |
 | `ds.save_as(path)` / `dcmwrite(path, ds)` | `await File(path).writeAsDicom(file)` |
-| `ds.pixel_array` | `ds.pixels.frame(i)` (one frame; decoding is a method) |
+| `ds.pixel_array` | `ds.pixels.allFrames()`, or `ds.pixels.frame(i)` for one frame (decoding is a method) |
+| `apply_modality_lut(arr, ds)` | `frame.toModality()` |
+| `apply_voi_lut(arr, ds, index=i)` | `frame.toDisplay(ds.voi(frame: f, index: i))` (8-bit; pydicom keeps the input's range) |
 | `AE(ae_title=...)`, `ae.add_requested_context(...)` | `ApplicationEntity(aeTitle: ..., requestedContexts: [...])` (S2) |
 | `assoc.send_c_find(ds, model)` (generator) | `assoc.sendCFind(query)` (a `Stream`) |
 | `evt.EVT_C_STORE` handler | an `InstanceSink` (`DirectorySink`, or your own) |
@@ -178,8 +185,15 @@ final desc = head.dataset.get(DicomTags.seriesDescription);
 // Viewer: full read, then one frame to the screen.
 final file = await File(path).readAsDicom();
 final ds = file.dataset;
-final buf = ds.pixels.frame(0).toDisplay(ds.voiWindow());  // DisplayBuffer: width, height, gray
+final px = ds.pixels;                       // hold it: each frame's LUTs are resolved once
+final buf = px.frame(0).toDisplay();         // DisplayBuffer: width, height, gray
 // Flutter side (the app's code): ui.decodeImageFromPixels(buf.toRgba(), buf.width, buf.height, ...)
+
+// Window drag: decode once, then only the LUTs run again.
+final frame = px.frame(0);
+var window = switch (ds.voi()) { VoiWindow w => w, _ => frame.autoWindow() };
+window = VoiWindow(window.center + dy, math.max(1, window.width + dx));
+final dragged = frame.toDisplay(window);
 ```
 
 The library stops at an 8-bit RGBA buffer. Turning it into a widget is the app's job, because no package depends on Flutter.
@@ -244,6 +258,9 @@ File(outPath).writeAsDicomSync(file);   // untouched elements are copied byte fo
 | Unreadable or truncated beyond repair | `DicomParseException`, with the offset and the tag where it stopped |
 | A deferred value's file changed on disk | `SourceChangedException` (DA2) |
 | Invalid write (meta and dataset UIDs conflict, value too long, text the declared charset can't encode, non-ASCII text with no Specific Character Set, …) | `DicomWriteException` with the fix in its message (e.g. *set `DicomTags.specificCharacterSet` to `'ISO_IR 192'`*); nothing is written (C-07, C-11, data §3.4) |
+| Pixels in an encoding this version can't decode or display: compressed, an unsupported Bits Allocated, YBR_FULL_422, color or palette display, an unknown VOI LUT Function | `UnsupportedPixelEncoding`; the message says what to do next (e.g. *request an uncompressed transfer syntax*) |
+| An Image Pixel, Modality LUT or VOI LUT attribute missing or invalid: Pixel Data shorter than its frames, a bad LUT Descriptor, a window width below the minimum, a value that isn't finite | `InvalidPixelModule`, naming the tag |
+| A frame index out of range | `RangeError` |
 
 **Association lifecycle** (user-visible):
 
@@ -276,7 +293,7 @@ stateDiagram-v2
 
 **Exceptions** all extend `DicomException`.
 
-- Each package keeps its own **sealed** subtree, which callers can `switch` on exhaustively: `DicomDataException` in core (parse, write, missing element, source changed), `DimseException` in net (rejected, aborted, timeout, protocol violation, `DimseFailureException`), and `DicomWebException` in web.
+- Each package keeps its own **sealed** subtree, which callers can `switch` on exhaustively: `DicomDataException` in core (parse, write, missing element, source changed), `PixelDataException` in pixel (`UnsupportedPixelEncoding`, `InvalidPixelModule`; *added in M4*), `DimseException` in net (rejected, aborted, timeout, protocol violation, `DimseFailureException`), and `DicomWebException` in web.
 - One sealed tree across all packages isn't possible: Dart only allows a sealed class's subtypes in its own library *(amended: [blueprint F30](../structure/01-codebase-blueprint.md#1-reconciliation-findings))*.
 - Subtype names are listed in §8. Every message names the tag (number *and* keyword) or the offset, and says what to do next. It never contains a value (I-9).
 
@@ -359,6 +376,8 @@ Everything is passed per call or per instance. Nothing is global (PRD constraint
 | S9 | How code reaches private elements (C-06) | **Decided 2026-10-17:** `ds.privateBlock(group, creator, {create})` returns a `PrivateBlock` (or `null`); `block.tag(offset)` gives the full tag; values go through the untyped getters and `setRaw`. Mirrors pydicom's `private_block`. Rejected: a block with its own getters and setters. | §2 |
 | S10 | What `Uid.generate()` uses as its root (C-16) | **Decided 2026-10-17:** `2.25.` + a random UUID (v4) as an integer (PS3.5 §B.2), so no registration is needed; `prefix:` takes an organization's root. Rejected: registering a project root. | §2 |
 | S8 | What `DisplayBuffer` holds | **Decided 2026-10-17:** 8-bit `gray` (one byte per pixel), with `toRgba()` as a method because it allocates 4× the memory. Color (X-08) adds channels later. Rejected: an `rgba` getter. | §2, §4.1 |
+| S11 | How a frame's VOI is chosen and applied (X-04) | **Decided 2026-10-18:** a sealed `Voi`, either `VoiWindow(center, width, {function})` (`VoiFunction.linear`, `linearExact` or `sigmoid`) or `VoiLut`. `ds.voi({frame, index, preferLut = true})` returns the dataset's own VOI, or `null` when it has none; a VOI LUT wins over a window, as in pydicom. `frame.toDisplay([voi])` with no argument uses that frame's own VOI (functional groups included), else `autoWindow()`: the frame's modality range without padding, so no second decode (blueprint F45). Replaces `ds.voiWindow()`. Rejected: keeping `voiWindow()` beside a `voiLut()`, which leaves the precedence to every app. | §2, §4.1 |
+| S12 | What a decoded array exposes (X-01) | **Decided 2026-10-18:** `PixelArray.shape` (frames, rows, columns, samples), `dtype` (`PixelDtype`), `values` as an unmodifiable typed list, a zero-copy view where the bytes allow it. `ds.pixels.allFrames()` decodes every frame into one buffer, and `array.frame(i)` views one of them. `toModality()` returns a `Float64List`. Rejected: per-frame arrays only, which leaves the joining and the rescale to the caller. | §2 |
 
 **Rejected:**
 
@@ -374,6 +393,7 @@ Everything is passed per call or per instance. Nothing is global (PRD constraint
 - **Read results:** `file.report`, `ReadReport.isClean` / `summary()`, `MissingElementException`, `DicomParseException`, `DicomWriteException`, `DimseFailureException`
 - **Network:** `RetrieveProgress.total` / `status`, `PresentationContexts.*`, `retrieveStorageClasses`, `timeouts`, `trace`
 - **Pixels:** `DisplayBuffer.gray` / `toRgba()` / `width` / `height` *(amended: S8)*
+- **Added in M4 planning (2026-10-18):** `ds.voi` (replaces `ds.voiWindow`), `Voi` / `VoiWindow` / `VoiFunction` / `VoiLut`, `PixelArray.shape` / `dtype` / `frame` / `toModality` / `autoWindow`, `toDisplay([voi])`, `PixelDtype`, `PixelData.allFrames`, `PixelDataException` / `UnsupportedPixelEncoding` / `InvalidPixelModule` (S11, S12)
 - **Added in M3 planning (2026-10-17):** `sendCStore(DicomFile)`, `sendCMove(query, destination:)`, `StorageScp.start` / `close` / `port`, `ScpPeer`, `Timeouts`, `DimseTimeout` (with `TimeoutKind`), `Trace` / `TraceSink` / `TraceEvent` / `TraceLevel`, `ReceivedInstance.moveOriginatorAeTitle` / `moveOriginatorMessageId`, `PresentationContexts.storage`, `ApplicationEntity.deflateCodec`; `Association.calledAeTitle` becomes `peerAeTitle`; `Timeouts.connect` replaces `associate(connectTimeout:)`
 - **Added in M2 planning (2026-10-17):** `ds.privateBlock` / `PrivateBlock.tag` (S9), `Uid.generate` / `isValid` (S10), `ds.element(tag)` (the untyped escape hatch F36 otherwise closes), `DicomFile.fromSource(ByteSource)`, `ByteSource` / `BytesSource` / `SourceOpener`, `DeflateCodec`, `SourceChangedException`
 - **Added in M1 planning (2026-10-17):** `Dataset.fromBytes` / `toBytes` (S7), `ds.transferSyntax`, `FileMetaInformation.forInstance` / `toHeaderBytes()`, `ReceivedInstance.sourceAeTitle` / `fileMeta`, `PresentationContexts.commonStorage`

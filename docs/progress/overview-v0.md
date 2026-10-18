@@ -10,7 +10,7 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M4 `dartdicom_pixel` P0. **M3 is done** (2026-10-17, `9f4f10a`…): every exit criterion met; the nightly `interop` job runs the matrix on CI. **M2 is done** (2026-10-17, `94d6759`…`c97b788`): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Now:** M4 `dartdicom_pixel` P0, planned 2026-10-18 (steps 0–7 below). **M3 is done** (2026-10-17, `9f4f10a`…): every exit criterion met; the nightly `interop` job runs the matrix on CI. **M2 is done** (2026-10-17, `94d6759`…`c97b788`): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
 **Next:** M5, 0.1.0 and the first consumer.
 
 ## Roadmap
@@ -209,11 +209,35 @@ Each step ends with the dry and floor gates green, and `just live` after a netwo
 
 ### M4 `dartdicom_pixel` P0 complete
 
-- [ ] X-01–X-04, X-07
+Planned 2026-10-18 (X-01–X-04, X-07). Decisions:
+- scope adds the Modality LUT Sequence, and the rescale and window of each frame from enhanced multi-frame functional groups (PRD X-04 amended; blueprint F44). Out of M4: Presentation LUT Shape, RGB display, Float Pixel Data;
+- VOI is a sealed `Voi` (`VoiWindow` with `VoiFunction` linear, linearExact or sigmoid; or `VoiLut`), read by `ds.voi()`, which replaces `ds.voiWindow()`. A VOI LUT wins over a window, as in pydicom (surface S11); `toDisplay()` with no argument uses the frame's own VOI (blueprint F45);
+- arrays get `shape` (frames, rows, columns, samples), a `dtype`, `allFrames()` and `toModality()`, and `values` becomes an unmodifiable view (surface S12);
+- pixel failures are a sealed `PixelDataException` (`UnsupportedPixelEncoding`, `InvalidPixelModule`); a bad frame index stays a `RangeError`;
+- the sha256 evidence covers the committed and synthetic fixtures, plus a pixel corpus gate over the 48 native corpus files as a ratchet;
+- the VOI tolerance is one gray level per pixel, after rescaling pydicom's output to 0–255, with MONOCHROME1 compared before inversion (I-33);
+- a VOI LUT's output is scaled by its descriptor's bits per entry, with no heuristic.
+
+Each step ends with the dry and floor gates green; `just live` runs after step 6.
+
+- [ ] **0. Docs.** The decisions above; PRD X-04; surface S11, S12 and §5; blueprint F44–F47, the pixel ranks (I-32), I-33, I-9 and I-30 amended.
+- [ ] **1. Errors, a strict module, M1's fixes.**
+  - `PixelDataException`, with messages free of values.
+  - `PixelModule` checked as pydicom checks it.
+  - Fixes: the width-1 window threshold, the 8-bit OW Big Endian pair swap measured from the value's start, PALETTE COLOR refused for display, rescale only when both slope and intercept are present, DS values that must be finite.
+  - `shape` and `dtype`; the pixel architecture test (I-7, no `print`, ranks).
+- [ ] **2. Fixtures and LUT goldens.**
+  - Synthetic scenarios for 1-bit (byte-aligned or not), 32-bit, PlanarConfiguration 1, unused bits that hold garbage, both LUT Sequences, SIGMOID, LINEAR_EXACT and functional groups.
+  - pydicom's modality and VOI output in `fixtures/data/lut/`, and the corpus's in the cache (F47).
+- [ ] **3. Native decoding (X-01, X-02).** 1-bit and 32-bit (safe on the web), PlanarConfiguration 1, `allFrames()` and frame views; `vs_pydicom_test` without skips.
+- [ ] **4. Pixel corpus gate.** A ratchet over the corpus's native pixel sha256; `corpus.yml` runs it.
+- [ ] **5. Modality LUT.** Per-frame attribute resolution, rescale or a table, `toModality()`, bit-exact against pydicom.
+- [ ] **6. VOI and display.** `Voi`, `ds.voi()`, `toDisplay([voi])` folded into one lookup table, `autoWindow()`; within one gray level of the goldens; `voiWindow` callers move.
+- [ ] **7. Fuzz, pixel PHI canary, close.**
 
 **Exit:**
-- pixel arrays match pydicom's sha256 for the native fixtures
-- VOI output matches pydicom's `apply_voi_lut` within a stated tolerance
+- pixel arrays match pydicom's sha256 for the native fixtures, and the pixel corpus gate passes its ratchet
+- modality values are bit-exact, and VOI output matches pydicom's `apply_voi_lut` within one gray level (I-33)
 
 ### M5 0.1.0 and the first consumer
 
@@ -236,6 +260,7 @@ These run in order of demand:
 
 - **core:** C-14 ISO 2022 · C-22 de-identification · C-23 DICOMDIR
 - **pixel:** X-08 color · X-09 JPEG Baseline · X-10 native/WASM codecs (separate repos) · X-11 encoding
+- **core writer, Big Endian (blueprint F46):** writing 1-bit OW or over-8-bit OB Pixel Data from Big Endian to Little Endian disagrees with how pydicom decodes the original (I-18). No fixture or corpus file holds either, so it waits for a file that does.
 - **net:** N-17 streaming a large instance to disk · N-18 Modality Worklist · N-19 TLS · N-20 N-services · N-21 isolate offload
 - **web:** W-07 WADO-URI · W-08 UPS-RS · W-09 server helpers
 

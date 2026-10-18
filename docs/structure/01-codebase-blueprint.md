@@ -79,6 +79,10 @@ These are the places where two inputs disagree, or where a single input disagree
 | F42 | PRD N-13 (a network timeout) and N-05 (no falsy stand-ins) **×** the M1 DUL, which reads only during an operation and throws `StateError` once aborted (found planning M3) | The `Dul` always keeps one PDU read pending while its transport is open: a one-PDU read-ahead, still pull-based. It notices a peer release, abort or close while idle; it answers a peer's A-RELEASE-RQ itself (AR-2, AR-4). It records the association's terminal cause, which every later call throws. The network timer runs only while no operation does (SCU) or between requests (SCP). |
 | F43 | PRD N-09 ("accepts only from configured peers") **×** AE titles, which any host can claim | `StorageScp.acceptFrom` is a list of `ScpPeer(aeTitle, {host})`. A host is resolved at `start()` and compared with the socket's remote address, normalized. The called AE title must be the SCP's. Rejections follow pynetdicom: (1,1,7) for the called AE, (1,1,3) for the calling one, (2,3,2) past `maxAssociations`. (Decided 2026-10-17, M3 decision 3.) |
 | F39 | Data §4.2 (storing costs no parsing) and §6 (`DirectorySink` lays files out by Study and Series UID) **×** the wire: a C-STORE-RQ command carries only the SOP Class and Instance UIDs | `DirectorySink` parses the received bytes' header (`stopBeforePixels`) to build the path, then stores the bytes unchanged. A UID that fails `^[0-9.]+$`, or a sink exception, gets a failure C-STORE-RSP (`0xC211`, as pynetdicom does); the retrieve carries on. *(Data §4.2 amended.)* |
+| F44 | PRD X-04 (rescale to HU, the window) **×** enhanced multi-frame images, which keep rescale and window in functional groups, and pydicom, whose `apply_*` read only the top level, so there is no oracle (found planning M4) | X-04 is amended: each frame's Modality LUT and VOI come from its own macro item: the Per-Frame Functional Groups item, else the Shared one, else the top level. A whole item wins, never a mix of levels (`lut/frame_source.dart`). The LUT goldens copy the frame's macro items to the top level before calling pydicom, so the test checks our resolution with pydicom's arithmetic. (Decided with M4's plan, 2026-10-18.) |
+| F45 | Surface S11 (`toDisplay(Voi)`, `ds.voi()`) **×** per-frame VOI (F44): `px.frame(5).toDisplay(ds.voi())` would silently use frame 0's window, and an automatic window computed inside `ds.voi()` decodes the frame twice | `toDisplay([Voi? voi])`: no argument means the frame's own VOI (a `PixelArray` knows its frame), else `autoWindow()`. `ds.voi()` returns `null` when the dataset has none. (Decided with M4's plan, 2026-10-18.) |
+| F46 | I-18 (a Big Endian file written as Little Endian decodes, by pydicom, to the same array) **×** the writer's swap rule (`write/writer.dart` `_wordSize`) for two cases pydicom decodes otherwise: 1-bit OW, which the writer swaps in pairs and pydicom reads unswapped, and OB over 8 bits, which the writer never swaps and pydicom reads in the transfer syntax's byte order (found planning M4) | No writer change in M4: both live in the retired Big Endian syntax, the second is non-conformant, and no fixture or corpus file holds either. `dartdicom_pixel` decodes as pydicom does. Recorded in the tracker's Deferred. |
+| F47 | I-33 (the VOI tolerance) needs pydicom's modality and VOI output per frame **×** `fixtures/data/golden/`, whose readers take every `*.json` there as an element record, and the corpus and written goldens, which `record()` shares | LUT goldens get their own root: `fixtures/data/lut/<group>/<name>.json`, and `$cache/lut/pydicom-data/` for the corpus, written by `fixtures golden` and `golden --corpus` and covered by `fixtures check`. Per frame: the modality values' sha256 (float64 LE), and for each VOI variant the output rescaled to 0–255 by the range pydicom used, as base64 uint8. Not compressed, since zlib output isn't byte-stable across builds. |
 
 **Verb → action → field.** Each verb the first consumer needs, traced to the action that performs it and the field it lands on:
 
@@ -88,7 +92,7 @@ These are the places where two inputs disagree, or where a single input disagree
 | retrieve | `Association.sendCGet` / `.sendCMove` | `RetrieveProgress` {remaining, completed, failed, warning}, from command elements (0000,1020)–(0000,1023) |
 | save | `InstanceSink.accept` | `ReceivedInstance` {SOP class, SOP instance, transfer syntax, bytes, source AE title, file meta} *(amended: "calling AE" was wrong for C-GET, where the peer is the called AE; the value is (0002,0016))* |
 | store | `DirectorySink.accept` | a Part 10 file: `fileMeta.toHeaderBytes()` + the received bytes unchanged, at a UID-only path (F25, F20, F39) |
-| display | `ds.pixels.frame(i).toDisplay(window)` | `DisplayBuffer` |
+| display | `ds.pixels.frame(i).toDisplay([voi])`; `toModality()` for HU *(amended, M4)* | `DisplayBuffer`; `Float64List` |
 | inspect | `Dataset.get` / `require` / `getAll` (typed tags), list-only getters for untyped tags / dump | element values |
 | modify | `Dataset.set` / `setAll` / `setEmpty` / `remove` / `setRaw` (S1) | `DataElement`; `setEmpty` is a zero-length element |
 | query | `sendCFind(Dataset)` (S3) | identifier: matching keys hold values, return keys are empty |
@@ -140,13 +144,13 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 │   ├── tool/gen_dictionary/      source.dart (release pin + SHA-256) · parse.dart · emit.dart · value_types.dart (I-19) · naming.dart (S4) → lib/src/**/*.g.dart (committed)
 │   ├── test/                     one folder per lib/src folder (io/ for lib/io.dart), tool/, gates/ (whole-library gates over the fixtures and corpora: architecture, I-9, I-10, I-11, I-30, the written-file gate), support/, compile_fail/ (I-24) *(amended)*
 │   └── example/  README.md  llms.txt  CHANGELOG.md  LICENSE  pubspec.yaml
-├── dartdicom_pixel/lib/src/      pixel_array/ · decode/ · lut/ · display/ · codec/
+├── dartdicom_pixel/lib/src/      lut/ · display/ · pixel_array/ · decode/ · pixels.dart · errors.dart · codec/ (P1)
 ├── dartdicom_net/lib/src/        pdu/ · fsm/ · dul/ · acse/ · dimse/ · association/ (+ presentation_contexts.dart, F29) · scp/ · sink/ · transport/ · trace/ · errors.dart
 │                                 every package root also has README.md (with the pydicom mapping) and llms.txt (F31)
 ├── dartdicom_web/lib/src/        client/ · qido/ · wado/ · stow/ · multipart/ · auth/
 ├── examples/                     workspace member, publish_to: none; depends on all packages; runnable end-to-end demos
 ├── fixtures/                     uv project (Python ≥ 3.13): `fixtures` CLI (typer) · src/dartdicom_fixtures/ · tests/ (pytest) · uv.lock
-│   └── data/                     committed artifacts only: synthetic/ · pydicom/ · golden/ · PROVENANCE.md (all generated)
+│   └── data/                     committed artifacts only: synthetic/ · pydicom/ · golden/ · lut/ (F47) · net/ · PROVENANCE.md (all generated)
 ├── scripts/                      dry_gates.sh · test_all.sh · check_deps.sh · floor_check.sh · check_fixtures.sh (bash; CI calls these, so it needs no just)
 ├── docker/compose.yaml           stock Orthanc (DIMSE + DICOMweb): the minimal test PACS; host ports overridable
 └── docs/                         req/ · design/ · structure/ · progress/
@@ -165,7 +169,7 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
   - **Synthetic.** `fixtures build` (pydicom, pinned in `fixtures/uv.lock`) builds 13 named scenarios from scratch into `fixtures/data/synthetic/`: signed HU vs unsigned + `RescaleIntercept −1024`, Implicit, Deflated and Big Endian variants, MONOCHROME1, multi-frame, RGB, Latin-1 and UTF-8 names, a missing `StudyDate`, undefined-length sequences, private tags. UIDs are name-based (`2.25.` + UUID v5) and dates fixed, so a re-run reproduces every byte.
   - **Curated copies.** 14 small files from pydicom's own bundled test data (MIT), copied from the pinned pydicom wheel into `fixtures/data/pydicom/`.
   - **Real-world corpora.** `fixtures corpus fetch` checks out pydicom-data at a pinned commit (and later public collections) into the user cache (`$DARTDICOM_CACHE`, else `$XDG_CACHE_HOME/dartdicom`, else `~/.cache/dartdicom`). Never committed.
-  - **Golden.** `fixtures golden` exports pydicom's reading of every fixture (elements, recursively, plus pixel shape, dtype and SHA-256) into `fixtures/data/golden/`, for I-11.
+  - **Golden.** `fixtures golden` exports pydicom's reading of every fixture (elements, recursively, plus pixel shape, dtype and SHA-256) into `fixtures/data/golden/`, for I-11. It also writes the LUT goldens (pydicom's modality and VOI output per frame) into `fixtures/data/lut/`, for I-33 (F47).
   - `fixtures/data/PROVENANCE.md` is generated with each file's source and checksum. `fixtures check` rebuilds everything into a temporary directory and fails on any difference or extra file (I-28). The package is a uv project (`fixtures/`), checked by ruff, pyright and pytest through `scripts/check_fixtures.sh`.
 
   Rejected: Git LFS, and a separate fixtures repo.
@@ -197,6 +201,7 @@ Two rules *inside* packages:
 
 - In core, `dataset/` imports nothing from `read/` or `write/` (F13), except `dataset/dataset.dart` for `Dataset.fromBytes` / `toBytes` (F38). `read/` and `write/` never import `file/`. *(amended)*
 - In net, layers import downward only: scp → association → dimse/acse → dul → pdu. `trace/` sits below them all (rank 0), so every layer can emit to it; it holds core `Dataset`s, never net types. *(amended, M3)*
+- In pixel, folders import downward only: `pixels.dart` → `decode/` → `pixel_array/` → `display/` → `lut/`. `lut/` reads core types and plain values, never `PixelModule`; `errors.dart` is unranked (I-32). *(added, M4)*
 
 **Enforcement.** A layering rule that is only written down is already broken, so each rule has a tool:
 
@@ -268,6 +273,8 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Add a DIMSE service | `dartdicom_net/lib/src/dimse/messages.dart` plus an `Association` method |
 | Add a pixel codec | its own package, or `dartdicom_pixel/lib/src/codec/<name>.dart`; registered by the caller |
 | Change windowing or LUT behavior | `dartdicom_pixel/lib/src/lut/` |
+| Change where a frame's attributes come from (functional groups) | `dartdicom_pixel/lib/src/lut/frame_source.dart` (F44) |
+| Change how the LUTs fold into 8-bit pixels | `dartdicom_pixel/lib/src/display/` |
 | Add a DICOMweb endpoint | `dartdicom_web/lib/src/{qido,wado,stow}/` |
 
 ## 7. What is deliberately absent
@@ -297,7 +304,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-6 ★ | In net, only `transport/`, `scp/` and `sink/` import `dart:io` | `dartdicom_net/test/architecture_test.dart` |
 | I-7 ★ | No top-level mutable variables (`var`, `late`, non-const `final`) in any `lib/` | architecture test (grep) |
 | I-8 ★ | Generated files match the generator's output for the pinned release | `dart run tool/gen_dictionary/main.dart --check` in `.github/workflows/generated.yml` (on generator or output changes; the release XML is cached) |
-| I-9 ★ | Element values never appear in exception messages, the default `toString`, trace output, or the `ReadReport` | net: the trace and exceptions of a find, get, store and StorageScp association over the `phi_canary` fixture (`dartdicom_net/test/phi_canary_test.dart`, M3); core: PHI canary test (`dartdicom/test/gates/phi_canary_test.dart` over the `phi_canary` fixture): sentinel values in names, IDs, descriptions, a private element and nested sequence text; truncated and damaged reads, wrong-type reads, write failures and repairs must not show them *(amended)* |
+| I-9 ★ | Element values never appear in exception messages, the default `toString`, trace output, or the `ReadReport`; in pixel, the offending value is a field of the exception, never in its message *(amended, M4)* | net: the trace and exceptions of a find, get, store and StorageScp association over the `phi_canary` fixture (`dartdicom_net/test/phi_canary_test.dart`, M3); core: PHI canary test (`dartdicom/test/gates/phi_canary_test.dart` over the `phi_canary` fixture): sentinel values in names, IDs, descriptions, a private element and nested sequence text; truncated and damaged reads, wrong-type reads, write failures and repairs must not show them; pixel: the `phi_canary` fixture through decode, the LUTs and display (`dartdicom_pixel/test/phi_canary_test.dart`, M4) *(amended)* |
 | I-10 ★ | Reading then writing an untouched file in the same transfer syntax gives byte-identical output, under F41's rule (repaired files reach a fixpoint; Deflated compares the inflated body) *(amended)* | golden round-trip test, corpus test |
 | I-11 ★ | Every element agrees with pydicom on the fixture corpus | `vs_pydicom_test.dart` against `fixtures/data/golden/` |
 | I-12 ★ | PDUs and command sets are byte-identical to pynetdicom's encoders | `dartdicom_net/test/pynetdicom_vectors_test.dart` against `fixtures/data/net/vectors.json`, encoded by pynetdicom 3.0.4 (`fixtures build`) *(amended)* |
@@ -318,8 +325,10 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-27 ★ | Writing text the declared charset can't encode, or non-ASCII text with no (0008,0005), fails with a `DicomWriteException` that names the tag and suggests the fix | writer test (F35) |
 | I-28 ★ | The committed fixtures, golden files and `PROVENANCE.md` reproduce exactly from the pinned tools | `fixtures check` via `scripts/check_fixtures.sh` (in the dry gates) |
 | I-29 ★ | In core, only `vr/value_codec.dart` imports `vr/codec/`; the rest of `lib/` reaches the codec families through it (`export … show`) | architecture test |
-| I-30 ★ | Malformed input never throws anything but the documented failure: on read a `DicomParseException` (a `DicomWriteException` on write), from the inflater a `FormatException`; in net a `FormatException` from the PDU decoder and framer, a `DimseProtocolException` from the assembler, a `DimseException` from an association (PRD *Untrusted input*) *(amended, M3)* | `dartdicom/test/gates/fuzz_test.dart`: seeded, 2,000 cases per group in the dry gates over mutated fixtures, the force path and the inflater; `just fuzz` runs more; `dartdicom_net/test/fuzz_test.dart` likewise for the PDU decoder, framer, assembler and an established requestor |
+| I-30 ★ | Malformed input never throws anything but the documented failure: on read a `DicomParseException` (a `DicomWriteException` on write), from the inflater a `FormatException`; in net a `FormatException` from the PDU decoder and framer, a `DimseProtocolException` from the assembler, a `DimseException` from an association; in pixel a `PixelDataException` or, for a frame index, a `RangeError` (PRD *Untrusted input*) *(amended, M3, M4)* | `dartdicom/test/gates/fuzz_test.dart`: seeded, 2,000 cases per group in the dry gates over mutated fixtures, the force path and the inflater; `just fuzz` runs more; `dartdicom_net/test/fuzz_test.dart` likewise for the PDU decoder, framer, assembler and an established requestor; `dartdicom_pixel/test/fuzz_test.dart` over mutated Image Pixel, Modality and VOI LUT attributes, functional groups and truncated Pixel Data |
 | I-31 ★ | In core, only `read/parser.dart` imports `read/parse/`; the rest of `lib/` reads through `parsePart10` and `parseDataset` | architecture test |
+| I-32 ★ | In pixel, folders import downward only: `pixels.dart` → `decode/` → `pixel_array/` → `display/` → `lut/` (§4) | `dartdicom_pixel/test/architecture_test.dart` |
+| I-33 ★ | Display agrees with pydicom: for every fixture and corpus file with a VOI, each pixel of `toDisplay` is within 1 gray level of pydicom's `apply_modality_lut` then `apply_voi_lut`, rescaled to 0–255 (a window by pydicom's own output range, a LUT by 2^bits − 1) and compared before MONOCHROME1's inversion; `toModality()` equals `apply_modality_lut` bit for bit (F47) | `dartdicom_pixel/test/lut_test.dart` over `fixtures/data/lut/`; the pixel corpus gate over the cached LUT goldens |
 
 ## 9. CI and release
 
@@ -332,7 +341,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 - `check_deps`, the generated-files check, `dart pub publish --dry-run`
 - the written-file gate on the fixtures: pydicom and DCMTK (installed from apt) read everything dartdicom writes *(amended)*
 
-**Corpus gates** (`corpus.yml`, on core or fixture changes and nightly): the pinned pydicom-data corpus, cached. `corpus_test.dart` (I-11, F41) and the written-file gate over the corpus. *(amended)*
+**Corpus gates** (`corpus.yml`, on core, pixel or fixture changes and nightly): the pinned pydicom-data corpus, cached. `corpus_test.dart` (I-11, F41), the written-file gate over the corpus, and pixel's corpus gate: native pixel sha256, modality values and display against the cached LUT goldens (I-33), a ratchet like core's. *(amended, M4)*
 
 **Live gates** (`interop.yml`, nightly and manual, not on PRs):
 
@@ -366,6 +375,10 @@ Structural amendments are applied in place and marked *(amended)*. Behavioral on
 | F5: the trace shows no values, so net needs no `Redactor` until `dump` (C-21) | F5's resolution; design §5.2 | structure | decided 2026-10-17 (M3 decision 5); applied |
 | F42: the DUL's reader model and recorded terminal cause | design §4.2 | structure | applied |
 | F43: StorageScp peers as `ScpPeer(aeTitle, {host})` | surface §7 (`acceptFrom` as AE titles) | **behavior** (public API) | decided 2026-10-17 (M3 decision 3); applied |
+| F44: each frame's Modality LUT and VOI from its functional groups | PRD X-04 | **behavior** (scope) | decided 2026-10-18 (M4 decision 1); applied |
+| F45: `toDisplay()` uses the frame's own VOI; `ds.voi()` may be `null` | surface S11 | **behavior** (public API) | decided with M4's plan, 2026-10-18; applied |
+| F46: the writer's Big Endian swap rule differs from pydicom's decoding for 1-bit OW and for OB over 8 bits | I-18 | **behavior** | no change in M4; deferred |
+| F47: LUT goldens in their own root | this doc §3 | structure | applied |
 | F27: typed tags reshape the `Dataset` reads | design D2, PRD C-03 and its success criterion, data §3.4 | **behavior** (public API) | raised as DA1; decided 2026-10-16; applied |
 | F30: an open exception base plus a sealed subtree per package | design §5.2, surface §5 | structure | applied |
 | F33: a final Failure on a stream is a stream error | design D3 and §5.2 | behavior | raised as S5; decided 2026-10-16; applied |

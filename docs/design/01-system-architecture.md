@@ -191,11 +191,12 @@ flowchart LR
     sel --> reg["CodecRegistry<br/>(RLE, plugins)"]
     native --> arr["PixelArray<br/>typed list + shape"]
     reg --> arr
+    fg["per-frame attributes<br/>functional groups, else top level"] --> lut
     arr --> lut["Modality LUT → VOI LUT<br/>→ MONOCHROME1"]
     lut --> disp["DisplayBuffer<br/>8-bit gray / RGBA"]
 ```
 
-Uncompressed data becomes a zero-copy typed-data view wherever byte order and alignment allow. Encapsulated data goes through core's frame iteration (C-18) and then a codec. The first consumer asks the PACS for uncompressed transfer syntaxes only (N-03), so codecs aren't needed for P0.
+Uncompressed data becomes a zero-copy typed-data view wherever byte order and alignment allow. Each frame's Modality LUT and VOI come from its functional groups (per-frame, then shared) in an enhanced multi-frame image, otherwise from the top level *(amended: [blueprint F44](../structure/01-codebase-blueprint.md#1-reconciliation-findings))*. Display folds the Modality LUT, the VOI and MONOCHROME1 into one lookup table over the stored values, so moving a window costs one table and one pass. Encapsulated data goes through core's frame iteration (C-18) and then a codec. The first consumer asks the PACS for uncompressed transfer syntaxes only (N-03), so codecs aren't needed for P0.
 
 ### 4.4 `dartdicom_web` (P1)
 
@@ -372,7 +373,7 @@ classDiagram
 
 ### 5.3 Pixel
 
-`PixelArray` holds a typed list, a shape and a dtype. A `PixelDecoder` is picked by transfer syntax. `CodecRegistry` is a per-instance list of `DecoderPlugin`s, and the first available plugin wins. `VoiWindow` and `DisplayBuffer` complete the set. The registry is passed in by the caller; it is never global (PRD constraint).
+`PixelArray` holds a typed list, a shape and a dtype. A `PixelDecoder` is picked by transfer syntax. `CodecRegistry` is a per-instance list of `DecoderPlugin`s, and the first available plugin wins. A sealed `Voi` (`VoiWindow` or `VoiLut`, surface S11) and `DisplayBuffer` complete the set; the Modality LUT stays internal, reached through `toModality()`. Failures are a sealed `PixelDataException` subtree under core's `DicomException`. The registry is passed in by the caller; it is never global (PRD constraint).
 
 ## 6. Key flows
 
@@ -399,7 +400,7 @@ The native read goes in an extension on `dart:io`'s `File`. `DicomFile.read(path
 final file = await File('ct.dcm').readAsDicom();      // io.dart, native
 final ds = file.dataset;
 final name = ds.get(DicomTags.patientName);               // String?, converted lazily
-final img = ds.pixels.frame(0).toDisplay(ds.voiWindow()); // dartdicom_pixel extension
+final img = ds.pixels.frame(0).toDisplay();   // dartdicom_pixel extension; the frame's own VOI
 ```
 
 ```mermaid
@@ -416,7 +417,7 @@ sequenceDiagram
     DS-->>App: converted on first access
     App->>PX: ds.pixels.frame(0)
     PX->>DS: Pixel Data bytes + transfer syntax
-    PX-->>App: PixelArray → VOI → DisplayBuffer
+    PX-->>App: PixelArray → Modality LUT → VOI → DisplayBuffer
 ```
 
 ### 6.2 C-FIND, then C-GET (no inbound port)

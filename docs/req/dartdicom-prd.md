@@ -125,7 +125,7 @@ The first consumer displays images, so uncompressed decoding and display windowi
 | X-01 | **PixelArray**: a typed-data buffer plus shape (frames, rows, columns, samples) and dtype. It is a zero-copy view where the bytes allow. | P0 |
 | X-02 | **Native (uncompressed) decoding:** <br>• BitsAllocated 1, 8, 16 and 32 <br>• signed pixels <br>• sign extension when BitsStored < BitsAllocated <br>• PlanarConfiguration <br>• multi-frame | P0 |
 | X-03 | **Reachable from a Dataset.** Pixel access is called on a Dataset, but the core itself contains no pixel code. | P0 |
-| X-04 | **LUTs:** Modality LUT (rescale to HU), VOI LUT (window linear or sigmoid, and the VOI LUT Sequence), MONOCHROME1 inversion. | P0 |
+| X-04 | **LUTs:** <br>• Modality LUT: a rescale to HU, or the Modality LUT Sequence <br>• VOI LUT: a window (linear, linear exact or sigmoid), or the VOI LUT Sequence <br>• MONOCHROME1 inversion <br>• For enhanced multi-frame images, each frame's own rescale and window, from its functional groups <br>*(amended: [blueprint F44](../structure/01-codebase-blueprint.md#1-reconciliation-findings))* | P0 |
 | X-05 | **Codec plugin interface**, registered per transfer syntax; the first available codec wins. The registry belongs to the caller or instance, not to the process. | P1 |
 | X-06 | **Pure-Dart RLE Lossless.** Deflate comes from the core. | P1 |
 | X-07 | **8-bit display buffer** after VOI, ready for PNG encoding or a Flutter `Image`. | P0 |
