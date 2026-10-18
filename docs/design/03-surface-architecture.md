@@ -295,7 +295,7 @@ stateDiagram-v2
 
 - Each package keeps its own **sealed** subtree, which callers can `switch` on exhaustively: `DicomDataException` in core (parse, write, missing element, source changed), `PixelDataException` in pixel (`UnsupportedPixelEncoding`, `InvalidPixelModule`; *added in M4*), `DimseException` in net (rejected, aborted, timeout, protocol violation, `DimseFailureException`), and `DicomWebException` in web.
 - One sealed tree across all packages isn't possible: Dart only allows a sealed class's subtypes in its own library *(amended: [blueprint F30](../structure/01-codebase-blueprint.md#1-reconciliation-findings))*.
-- Subtype names are listed in §8. Every message names the tag (number *and* keyword) or the offset, and says what to do next. It never contains a value (I-9).
+- Subtype names are listed in §8. Every message names the tag (number *and* keyword) or the offset, and says what to do next. It never contains a value (I-9). Core exports `describeTag(tag)`, which gives that name (`(0010,0010) PatientName`), so other packages and apps name tags the same way *(amended, M4 refactor)*.
 
 ## 6. API ergonomics
 

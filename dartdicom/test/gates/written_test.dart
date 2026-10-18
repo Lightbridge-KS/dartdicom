@@ -13,7 +13,6 @@ import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/src/dataset/element.dart';
-import 'package:dartdicom/src/dictionary/dictionary.dart' show describeTag;
 import 'package:dartdicom/src/write/writer.dart' show swapWords;
 import 'package:test/test.dart';
 

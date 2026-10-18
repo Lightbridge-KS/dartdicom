@@ -9,7 +9,7 @@ export 'src/dataset/element.dart' show DataElement;
 export 'src/dataset/private_block.dart';
 export 'src/dataset/read_report.dart';
 export 'src/dataset/sequence.dart';
-export 'src/dictionary/dictionary.dart' show Dictionary;
+export 'src/dictionary/dictionary.dart' show Dictionary, describeTag;
 export 'src/dictionary/dictionary_entry.dart' show DictionaryEntry;
 export 'src/errors.dart';
 export 'src/file/dicom_file.dart';

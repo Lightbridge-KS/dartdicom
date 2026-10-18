@@ -32,6 +32,12 @@ void main() {
       expect(standardEntries[0xFFFEE000]!.vrs, isEmpty);
     });
 
+    test('describeTag names a tag by number and keyword', () {
+      expect(describeTag(DicomTags.patientName), '(0010,0010) PatientName');
+      expect(describeTag(DicomTags.rows), '(0028,0010) Rows');
+      expect(describeTag(const Tag(0x00091010)), '(0009,1010)'); // private
+    });
+
     test('repeating groups match by mask', () {
       final overlayData =
           repeaterEntries.singleWhere((r) => r.entry.keyword == 'OverlayData');
