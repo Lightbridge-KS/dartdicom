@@ -11,3 +11,7 @@ const pixelCorpusExpectedFailures = <({String file, String reason})>[
         'X-08 (P2).',
   ),
 ];
+
+/// pydicom-data files whose Modality LUT or VOI output still disagrees with
+/// the cached LUT goldens (I-33, blueprint F47).
+const lutCorpusExpectedFailures = <({String file, String reason})>[];

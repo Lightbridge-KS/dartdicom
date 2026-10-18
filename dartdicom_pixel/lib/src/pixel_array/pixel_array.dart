@@ -4,6 +4,7 @@ import 'package:dartdicom/dartdicom.dart';
 
 import '../display/display_buffer.dart';
 import '../errors.dart';
+import '../lut/modality_lut.dart';
 import '../lut/voi_window.dart';
 import 'pixel_module.dart';
 
@@ -57,8 +58,9 @@ enum PixelDtype {
 /// it first (`Int16List.fromList(values)`) to change it.
 final class PixelArray {
   /// [values] (a typed list of [module]'s dtype) as whole frames, the first
-  /// of them frame [firstFrame] of its dataset.
-  PixelArray(List<int> values, this.module, {this.firstFrame = 0})
+  /// of them frame [firstFrame] of [dataset]. Each frame's Modality LUT and
+  /// VOI come from [dataset]; without one, the Modality LUT is the identity.
+  PixelArray(List<int> values, this.module, {this.firstFrame = 0, this.dataset})
       : dtype = PixelDtype.of(module),
         _data = values,
         values = _unmodifiable(values) {
@@ -83,6 +85,18 @@ final class PixelArray {
 
   /// The index, in its dataset, of this array's first frame.
   final int firstFrame;
+
+  /// The dataset the frames come from, for their Modality LUT and VOI.
+  final Dataset? dataset;
+
+  /// Each frame's Modality LUT, resolved on first use.
+  late final List<ModalityLut> _modality = [
+    for (var f = 0; f < shape.frames; f++)
+      switch (dataset) {
+        final ds? => ModalityLut.of(ds, firstFrame + f),
+        null => const Rescale(1, 0),
+      },
+  ];
 
   /// (frames, rows, columns, samples).
   PixelShape get shape => (
@@ -111,10 +125,27 @@ final class PixelArray {
     final length = module.samplesPerFrame;
     return PixelArray(
         _view(_data, index * length, (index + 1) * length), module,
-        firstFrame: firstFrame + index);
+        firstFrame: firstFrame + index, dataset: dataset);
   }
 
-  /// Applies the Modality LUT (rescale slope and intercept), then [window],
+  /// The Modality LUT applied to every value (PRD X-04): modality values,
+  /// such as Hounsfield units for CT, frame by frame from each frame's own
+  /// rescale or Modality LUT Sequence, functional groups included. Equal,
+  /// bit for bit, to pydicom's `apply_modality_lut`. Allocates 8 bytes per
+  /// value.
+  Float64List toModality() {
+    final out = Float64List(_data.length);
+    final length = module.samplesPerFrame;
+    for (var f = 0; f < _modality.length; f++) {
+      final lut = _modality[f];
+      for (var i = f * length; i < (f + 1) * length; i++) {
+        out[i] = lut.apply(_data[i]);
+      }
+    }
+    return out;
+  }
+
+  /// Applies the Modality LUT, then [window],
   /// then MONOCHROME1 inversion, giving 8-bit gray (PRD X-04, X-07).
   ///
   /// Throws an [UnsupportedPixelEncoding] for anything but MONOCHROME1 and
@@ -129,12 +160,11 @@ final class PixelArray {
           '`values`',
           tag: DicomTags.photometricInterpretation);
     }
-    final slope = module.rescaleSlope;
-    final intercept = module.rescaleIntercept;
+    final modality = _modality.single;
     final invert = module.photometricInterpretation == 'MONOCHROME1';
     final gray = Uint8List(_data.length);
     for (var i = 0; i < _data.length; i++) {
-      final level = window.apply(_data[i] * slope + intercept);
+      final level = window.apply(modality.apply(_data[i]));
       gray[i] = invert ? 255 - level : level;
     }
     return DisplayBuffer(columns, rows, gray);
@@ -145,17 +175,16 @@ final class PixelArray {
   (double, double)? modalityRange() {
     _oneFrame('modalityRange');
     final padding = module.pixelPaddingValue;
-    int? lo;
-    int? hi;
+    final modality = _modality.single;
+    double? lo;
+    double? hi;
     for (final v in _data) {
       if (v == padding) continue;
-      if (lo == null || v < lo) lo = v;
-      if (hi == null || v > hi) hi = v;
+      final m = modality.apply(v);
+      if (lo == null || m < lo) lo = m;
+      if (hi == null || m > hi) hi = m;
     }
-    if (lo == null || hi == null) return null;
-    final a = lo * module.rescaleSlope + module.rescaleIntercept;
-    final b = hi * module.rescaleSlope + module.rescaleIntercept;
-    return a <= b ? (a, b) : (b, a);
+    return lo == null || hi == null ? null : (lo, hi);
   }
 
   void _oneFrame(String method) {

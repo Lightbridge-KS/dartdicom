@@ -15,8 +15,6 @@ final class PixelModule {
     required this.photometricInterpretation,
     required this.planarConfiguration,
     required this.numberOfFrames,
-    required this.rescaleSlope,
-    required this.rescaleIntercept,
     required this.pixelPaddingValue,
   });
 
@@ -62,10 +60,6 @@ final class PixelModule {
     if (frames < 0) {
       throw InvalidPixelModule(DicomTags.numberOfFrames, 'must be at least 1');
     }
-    // A rescale needs both attributes, as in pydicom's apply_modality_lut.
-    final slope = _finite(ds, DicomTags.rescaleSlope);
-    final intercept = _finite(ds, DicomTags.rescaleIntercept);
-    final rescale = slope != null && intercept != null;
     return PixelModule._(
       rows: _dimension(ds, DicomTags.rows),
       columns: _dimension(ds, DicomTags.columns),
@@ -76,8 +70,6 @@ final class PixelModule {
       photometricInterpretation: photometric,
       planarConfiguration: planar,
       numberOfFrames: frames == 0 ? 1 : frames,
-      rescaleSlope: rescale ? slope : 1,
-      rescaleIntercept: rescale ? intercept : 0,
       pixelPaddingValue: _read(ds, DicomTags.pixelPaddingValue),
     );
   }
@@ -109,12 +101,6 @@ final class PixelModule {
 
   /// Number of Frames, at least 1.
   final int numberOfFrames;
-
-  /// Rescale Slope, or 1 unless both Slope and Intercept are present.
-  final double rescaleSlope;
-
-  /// Rescale Intercept, or 0 unless both Slope and Intercept are present.
-  final double rescaleIntercept;
 
   /// Pixel Padding Value, if present.
   final int? pixelPaddingValue;
@@ -150,16 +136,6 @@ int _dimension(Dataset ds, One<int> tag) {
   final value = _required(ds, tag);
   if (value < 1 || value > 65535) {
     throw InvalidPixelModule(tag, 'must be 1–65535');
-  }
-  return value;
-}
-
-/// [tag]'s value, or `null` if it is absent. NaN or an infinity (which DS
-/// text can spell) is an [InvalidPixelModule].
-double? _finite(Dataset ds, One<double> tag) {
-  final value = _read(ds, tag);
-  if (value != null && !value.isFinite) {
-    throw InvalidPixelModule(tag, 'must be a finite number');
   }
   return value;
 }

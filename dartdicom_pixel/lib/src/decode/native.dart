@@ -65,7 +65,7 @@ PixelArray decodeNative(Dataset ds, PixelModule m, int first, int count) {
   final values = m.planarConfiguration == 1
       ? _interleave(stored, count, m.rows * m.columns, m.samplesPerPixel)
       : stored;
-  return PixelArray(values, m, firstFrame: first);
+  return PixelArray(values, m, firstFrame: first, dataset: ds);
 }
 
 /// The Pixel Data bytes; an [InvalidPixelModule] if there are none.

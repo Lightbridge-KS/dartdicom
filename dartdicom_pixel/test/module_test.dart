@@ -77,28 +77,12 @@ void main() {
       expectInvalid(DicomTags.photometricInterpretation,
           (ds) => ds.set(DicomTags.photometricInterpretation, 'GRAYSCALE'));
     });
-    test('a Rescale Slope that is not finite', () {
-      final ds = parsed([
-        (0x00281052, 'DS', text('0')),
-        (0x00281053, 'DS', text('NaN')),
-        ...pixelModule(rows: 1, columns: 2, bitsAllocated: 8),
-        (pixelDataTag, 'OB', [1, 2]),
-      ]);
-      expect(() => ds.pixels, throwsA(_invalid(DicomTags.rescaleSlope)));
-    });
   });
 
   test('Number of Frames 0 is one frame, as in pydicom', () {
     final ds = image16([1, 2])..set(DicomTags.numberOfFrames, 0);
     expect(ds.pixels.numberOfFrames, 1);
     expect(ds.pixels.frame(0).values, [1, 2]);
-  });
-
-  test('a rescale needs both Slope and Intercept, as in pydicom', () {
-    final m = image16([0, 1024], signed: false, intercept: -1024).pixels.module;
-    expect((m.rescaleSlope, m.rescaleIntercept), (1.0, 0.0));
-    final both = image16([0], slope: 2, intercept: -1024).pixels.module;
-    expect((both.rescaleSlope, both.rescaleIntercept), (2.0, -1024.0));
   });
 
   group('an encoding this version cannot decode is UnsupportedPixelEncoding',
