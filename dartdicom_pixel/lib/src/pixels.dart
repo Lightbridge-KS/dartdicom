@@ -42,10 +42,17 @@ final class PixelData {
   int get numberOfFrames => module.numberOfFrames;
 
   /// Decodes frame [index] (0-based). Throws an [UnsupportedPixelEncoding]
-  /// for an encoding this version can't decode yet (compressed, or Bits
-  /// Allocated other than 8 or 16), an [InvalidPixelModule] if Pixel Data
-  /// doesn't hold the frame, and a [RangeError] for an index out of range.
-  PixelArray frame(int index) => decodeNativeFrame(_dataset, module, index);
+  /// for an encoding this version can't decode yet (compressed, Bits
+  /// Allocated other than 1, 8, 16 or 32, YBR_FULL_422), an
+  /// [InvalidPixelModule] if Pixel Data doesn't hold the frame, and a
+  /// [RangeError] for an index out of range.
+  PixelArray frame(int index) => decodeNative(_dataset, module, index, 1);
+
+  /// Decodes every frame into one buffer, as pydicom's `pixel_array` does;
+  /// `.frame(i)` of the result views one without decoding again. Throws as
+  /// [frame] does.
+  PixelArray allFrames() =>
+      decodeNative(_dataset, module, 0, module.numberOfFrames);
 }
 
 /// [tag]'s values; NaN or an infinity is an [InvalidPixelModule].
