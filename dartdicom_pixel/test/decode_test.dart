@@ -89,6 +89,42 @@ void main() {
     });
   });
 
+  group('Big Endian, as PS3.5 and DCMTK read it (blueprint F46)', () {
+    // The expected values are DCMTK 3.7.0's (dcm2img) for the same bytes;
+    // pydicom 3.0.2 reads both Big Endian cases differently. Each Big Endian
+    // dataset must decode as its Little Endian rewrite does, whose bytes
+    // dartdicom's writer and DCMTK's dcmconv produce identically.
+    test('1-bit OW comes in 16-bit words: each byte pair is swapped', () {
+      Dataset oneBit(List<int> bytes, Endian endian) => parsed([
+            ...pixelModule(
+                rows: 4,
+                columns: 4,
+                bitsAllocated: 1,
+                frames: 2,
+                endian: endian),
+            (pixelDataTag, 'OW', bytes),
+          ], endian: endian);
+      final be = oneBit([0x01, 0x80, 0x03, 0xC0], Endian.big);
+      final le = oneBit([0x80, 0x01, 0xC0, 0x03], Endian.little);
+      expect(be.pixels.frame(0).values,
+          [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
+      expect(be.pixels.frame(1).values,
+          [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]);
+      expect(be.pixels.allFrames().values, le.pixels.allFrames().values);
+    });
+
+    test('OB wider than 8 bits is a byte stream: it reads as Little Endian',
+        () {
+      Dataset ob16(Endian endian) => parsed([
+            ...pixelModule(
+                rows: 1, columns: 2, bitsAllocated: 16, endian: endian),
+            (pixelDataTag, 'OB', [1, 2, 3, 4]),
+          ], endian: endian);
+      expect(ob16(Endian.big).pixels.frame(0).values, [0x0201, 0x0403]);
+      expect(ob16(Endian.little).pixels.frame(0).values, [0x0201, 0x0403]);
+    });
+  });
+
   test('PlanarConfiguration 1 is interleaved frame by frame', () {
     // Two 1×2 RGB frames, each as its R plane, G plane, B plane.
     final ds = parsed([

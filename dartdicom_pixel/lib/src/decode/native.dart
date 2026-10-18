@@ -11,9 +11,15 @@ import '../pixel_array/pixel_module.dart';
 /// - Bits Allocated 1 (unpacked, least significant bit first), 8, 16 or 32;
 /// - the bits above Bits Stored masked off, and signed values
 ///   sign-extended (`correct_unused_bits`);
-/// - PlanarConfiguration 1 interleaved, frame by frame;
-/// - data wider than 8 bits in the transfer syntax's byte order, and 8-bit
-///   OW Big Endian in swapped byte pairs (`be_swap_ow`).
+/// - PlanarConfiguration 1 interleaved, frame by frame.
+///
+/// Byte order follows PS3.5 (2016b §8.2 and A.3) and DCMTK, which differ
+/// from pydicom in two retired Big Endian cases (blueprint F46). OW holds
+/// 16-bit words in the transfer syntax's byte order whatever Bits
+/// Allocated, so 1-bit and 8-bit OW Big Endian come in swapped byte pairs;
+/// pydicom swaps only 8-bit. OB is a byte stream that byte order doesn't
+/// touch, so OB wider than 8 bits (non-conformant in Big Endian) reads as
+/// Little Endian; pydicom reads it as Big Endian.
 ///
 /// The result is a zero-copy view of Pixel Data when nothing needs changing
 /// and the byte order and alignment allow.
@@ -55,12 +61,15 @@ PixelArray decodeNative(Dataset ds, PixelModule m, int first, int count) {
         'is shorter than the frames the Image Pixel module declares');
   }
 
+  final vr = ds.element(DicomTags.pixelData)?.vr;
+  final swapPairs = !ts.littleEndian && vr == Vr.OW;
+  final littleEndian = ts.littleEndian || vr == Vr.OB;
   final samples = count * perFrame;
   final List<int> stored = switch (m.bitsAllocated) {
-    1 => _unpackBits(bytes, first * perFrame, samples),
-    8 => _bytes(ds, ts, m, bytes, first * m.frameLength, samples),
-    16 => _words(ts, m, bytes, first * m.frameLength, samples),
-    _ => _longs(ts, m, bytes, first * m.frameLength, samples),
+    1 => _unpackBits(bytes, first * perFrame, samples, swapPairs),
+    8 => _bytes(m, bytes, first * m.frameLength, samples, swapPairs),
+    16 => _words(m, bytes, first * m.frameLength, samples, littleEndian),
+    _ => _longs(m, bytes, first * m.frameLength, samples, littleEndian),
   };
   final values = m.planarConfiguration == 1
       ? _interleave(stored, count, m.rows * m.columns, m.samplesPerPixel)
@@ -84,26 +93,27 @@ Uint8List _pixelData(Dataset ds) {
 }
 
 /// [count] 1-bit pixels from bit [start]: least significant bit first
-/// (PS3.5 §8.1.1), one byte each. `~/` and `%`, not shifts, so offsets past
-/// 2³² bits stay right on the web.
-Uint8List _unpackBits(Uint8List bytes, int start, int count) {
+/// (PS3.5 §8.2), one byte each, with the bytes of each 16-bit word swapped
+/// when [swapPairs] (OW, Big Endian). `~/` and `%`, not shifts, so offsets
+/// past 2³² bits stay right on the web.
+Uint8List _unpackBits(Uint8List bytes, int start, int count, bool swapPairs) {
   final out = Uint8List(count);
   for (var i = 0; i < count; i++) {
     final bit = start + i;
-    out[i] = (bytes[bit ~/ 8] >> (bit % 8)) & 1;
+    var at = bit ~/ 8;
+    if (swapPairs && (at ^ 1) < bytes.length) at ^= 1;
+    out[i] = (bytes[at] >> (bit % 8)) & 1;
   }
   return out;
 }
 
-/// 8-bit samples from byte [start].
-List<int> _bytes(Dataset ds, TransferSyntax ts, PixelModule m, Uint8List bytes,
-    int start, int count) {
-  // 8-bit data in OW, Big Endian: the bytes are in 16-bit words, so each
-  // pair is swapped (pydicom's be_swap_ow). The pairs count from the start
-  // of the value, so a frame may start on its odd byte, and an odd image's
-  // last pixel comes from the padding word.
-  final swapPairs =
-      !ts.littleEndian && ds.element(DicomTags.pixelData)?.vr == Vr.OW;
+/// 8-bit samples from byte [start]. With [swapPairs] (OW, Big Endian), the
+/// bytes are in 16-bit words, so each pair is swapped (pydicom's
+/// be_swap_ow). The pairs count from the start of the value, so a frame may
+/// start on its odd byte, and an odd image's last pixel comes from the
+/// padding word.
+List<int> _bytes(
+    PixelModule m, Uint8List bytes, int start, int count, bool swapPairs) {
   final out = m.signed ? Int8List(count) : Uint8List(count);
   if (swapPairs) {
     for (var i = 0; i < count; i++) {
@@ -127,15 +137,15 @@ List<int> _bytes(Dataset ds, TransferSyntax ts, PixelModule m, Uint8List bytes,
 
 /// 16-bit samples from byte [start].
 List<int> _words(
-    TransferSyntax ts, PixelModule m, Uint8List bytes, int start, int count) {
+    PixelModule m, Uint8List bytes, int start, int count, bool littleEndian) {
   final at = bytes.offsetInBytes + start;
-  if (m.bitsStored == 16 && _hostOrder(ts) && at % 2 == 0) {
+  if (m.bitsStored == 16 && _hostOrder(littleEndian) && at % 2 == 0) {
     return m.signed
         ? Int16List.view(bytes.buffer, at, count)
         : Uint16List.view(bytes.buffer, at, count);
   }
   final data = ByteData.sublistView(bytes, start, start + count * 2);
-  final endian = ts.littleEndian ? Endian.little : Endian.big;
+  final endian = littleEndian ? Endian.little : Endian.big;
   final out = m.signed ? Int16List(count) : Uint16List(count);
   for (var i = 0; i < count; i++) {
     out[i] = _correct(data.getUint16(i * 2, endian), m.bitsStored, m.signed);
@@ -147,15 +157,15 @@ List<int> _words(
 /// nothing here shifts by 32: a full 32-bit value comes straight from
 /// `getInt32` or `getUint32`, and only narrower ones are masked.
 List<int> _longs(
-    TransferSyntax ts, PixelModule m, Uint8List bytes, int start, int count) {
+    PixelModule m, Uint8List bytes, int start, int count, bool littleEndian) {
   final at = bytes.offsetInBytes + start;
-  if (m.bitsStored == 32 && _hostOrder(ts) && at % 4 == 0) {
+  if (m.bitsStored == 32 && _hostOrder(littleEndian) && at % 4 == 0) {
     return m.signed
         ? Int32List.view(bytes.buffer, at, count)
         : Uint32List.view(bytes.buffer, at, count);
   }
   final data = ByteData.sublistView(bytes, start, start + count * 4);
-  final endian = ts.littleEndian ? Endian.little : Endian.big;
+  final endian = littleEndian ? Endian.little : Endian.big;
   final out = m.signed ? Int32List(count) : Uint32List(count);
   for (var i = 0; i < count; i++) {
     out[i] = m.bitsStored == 32
@@ -167,8 +177,8 @@ List<int> _longs(
   return out;
 }
 
-bool _hostOrder(TransferSyntax ts) =>
-    (Endian.host == Endian.little) == ts.littleEndian;
+bool _hostOrder(bool littleEndian) =>
+    (Endian.host == Endian.little) == littleEndian;
 
 /// [stored] with each frame's planes (all of sample 0, then 1, then 2)
 /// interleaved into pixels, as pydicom returns PlanarConfiguration 1.
