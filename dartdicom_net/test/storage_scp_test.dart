@@ -74,6 +74,24 @@ void main() {
             .toBytes(transferSyntax: TransferSyntaxes.explicitVrLittleEndian));
   });
 
+  test('its own and its peers\' AE titles are checked like any other',
+      () async {
+    for (final bad in ['', '   ', 'A' * 17, r'ONE\TWO', 'DÄRT']) {
+      await expectLater(
+          StorageScp.start(
+              aeTitle: bad, sink: MemorySink(), acceptFrom: const []),
+          throwsArgumentError,
+          reason: bad);
+      await expectLater(
+          StorageScp.start(
+              aeTitle: 'DARTDICOM',
+              sink: MemorySink(),
+              acceptFrom: [ScpPeer(bad)]),
+          throwsArgumentError,
+          reason: bad);
+    }
+  });
+
   group('rejections (F43, pynetdicom\'s reasons)', () {
     test('a called AE title that is not ours: (1,1,7)', () async {
       final scp = await _start(MemorySink());

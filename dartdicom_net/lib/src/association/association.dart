@@ -187,10 +187,7 @@ final class Association {
   Stream<RetrieveProgress> sendCMove(Dataset query,
       {required String destination,
       QueryRetrieveModel model = QueryRetrieveModel.studyRoot}) {
-    if (destination.trim().isEmpty || destination.length > 16) {
-      throw ArgumentError.value(destination, 'destination',
-          'must be the 1–16 character AE title of the move destination');
-    }
+    checkAeTitle(destination, 'destination');
     return _operation('C-MOVE', model.move, CommandField.cMoveRq, query,
         emit: (rsp, _, __) => RetrieveProgress.fromResponse(rsp),
         // A store on this association during a move: not ours to take.

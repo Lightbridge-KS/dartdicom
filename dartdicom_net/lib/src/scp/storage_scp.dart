@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../acse/acceptor.dart';
+import '../acse/negotiation.dart' show checkAeTitle;
 import '../association/serve.dart';
 import '../dimse/channel.dart';
 import '../dul/dul.dart';
@@ -78,9 +79,9 @@ final class StorageScp {
     int maxAssociations = 10,
     Trace? trace,
   }) async {
-    if (aeTitle.trim().isEmpty || aeTitle.length > 16) {
-      throw ArgumentError.value(
-          aeTitle, 'aeTitle', 'must be 1–16 printable ASCII characters');
+    checkAeTitle(aeTitle, 'aeTitle');
+    for (final peer in acceptFrom) {
+      checkAeTitle(peer.aeTitle, 'acceptFrom');
     }
     final hosts = <ScpPeer, Set<String>>{
       for (final peer in acceptFrom)

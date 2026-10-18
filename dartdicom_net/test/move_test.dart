@@ -164,8 +164,14 @@ void main() {
 
   test('a destination that is no AE title is an ArgumentError', () async {
     final (assoc, _) = await _associate();
-    expect(() => assoc.sendCMove(_query, destination: ''), throwsArgumentError);
-    expect(() => assoc.sendCMove(_query, destination: 'A' * 17),
-        throwsArgumentError);
+    for (final bad in [
+      '', '   ', 'A' * 17, // empty, all spaces, too long
+      r'ONE\TWO', // a backslash: it would go out as two values
+      'DÄRT', 'TAB\tAE', // not printable ASCII
+    ]) {
+      expect(
+          () => assoc.sendCMove(_query, destination: bad), throwsArgumentError,
+          reason: bad);
+    }
   });
 }

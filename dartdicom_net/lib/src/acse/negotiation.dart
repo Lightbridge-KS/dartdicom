@@ -21,8 +21,8 @@ AssociateRq buildAssociateRq({
   required Iterable<Uid> scpRoleClasses,
   required int maxPduLength,
 }) {
-  _checkAeTitle(callingAeTitle, 'aeTitle');
-  _checkAeTitle(calledAeTitle, 'calledAeTitle');
+  checkAeTitle(callingAeTitle, 'aeTitle');
+  checkAeTitle(calledAeTitle, 'calledAeTitle');
   if (contexts.length > 128) {
     throw ArgumentError.value(
         contexts.length,
@@ -71,7 +71,12 @@ List<AcceptedContext> negotiatedContexts(AssociateRq rq, AssociateAc ac) {
   ]);
 }
 
-void _checkAeTitle(String ae, String name) {
+/// Throws an [ArgumentError] naming [name] unless [ae] is an AE title
+/// (VR AE, PS3.5 §6.2): 1–16 printable ASCII characters, not all spaces,
+/// no backslash (which would split it into two values). The one check for
+/// every AE title dartdicom sends: calling, called, a StorageScp's own and
+/// its peers', and a C-MOVE destination.
+void checkAeTitle(String ae, String name) {
   if (ae.trim().isEmpty ||
       ae.length > 16 ||
       ae.codeUnits.any((c) => c < 0x20 || c > 0x7E || c == 0x5C)) {
