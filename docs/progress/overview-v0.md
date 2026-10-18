@@ -278,10 +278,30 @@ These run in order of demand:
 - **net:** N-17 streaming a large instance to disk · N-18 Modality Worklist · N-19 TLS · N-20 N-services · N-21 isolate offload
 - **web:** W-07 WADO-URI · W-08 UPS-RS · W-09 server helpers
 
+## Deferred refactors
+
+Candidates the refactoring passes over `dartdicom_net` (2026-10-17) and `dartdicom_pixel` (2026-10-18) did not take. Re-examine one when its trigger fires; otherwise don't re-propose it. Behaviour questions from those passes are in *Open questions*.
+
+- **Not yet** (a scheduled change will draw the seam):
+  - pixel: lift `_correct` (masking and sign extension), the per-dtype allocation and the supported-encoding gate out of `decode/native.dart` into a shared decode module. Trigger: X-06 RLE, the second decoder, with X-05 drawing the codec seam.
+  - pixel: move the typed-list switches (`_like` in `native.dart`, `_view` and `_unmodifiable` in `pixel_array.dart`) onto `PixelDtype`. Trigger: X-06, or a new dtype such as Float Pixel Data. Today they do different jobs over the same types, not one rule twice.
+- **Not picked** (worth doing, not scheduled):
+  - net: `Association._operation` as a private class (Replace Function with Command), so its seven pieces of cancel and back-pressure state carry names and docs (F14). Judge after reading it as 424f140 left it.
+  - net: `serveStorage` builds its own `DimseChannel`, which removes `scp/`'s import of `dimse/`.
+- **Rejected:**
+  - net: splitting `dul/dul.dart` into a facade over parts. The pump, the action switch and the timers share one mutable state machine; splitting them needs a shared context object and yields shallow classes.
+  - net: moving `_storeContext` into `acse/`; it has one caller. Merging the A-ASSOCIATE-RQ and -AC decoders; they already share the header codec. A constants class for DIMSE status codes; each use names its code.
+  - net: `DimseTrace._names` restates `CommandField`'s table. The trace sits below DIMSE (rank 0), and fixing it means changing `DimseTrace`'s public constructor.
+  - pixel: remembering the `PixelModule` between `ds.pixels` calls. It needs state outside `PixelData` (a top-level `Expando` breaks I-7), and it is a performance feature, not structure.
+  - pixel: sharing `cacheRoot()`. Its four copies (pixel's test support, core's corpus gate, core's `tool/gen_dictionary`, the fixtures CLI's `paths.py`) cross packages and a language; sharing them needs a test-only workspace package for a five-line rule blueprint §3 already states.
+  - pixel: splitting `lut/voi.dart`; it follows `ModalityLut.of`'s factory-on-the-type shape and is cohesive. Collapsing `toGray`'s arguments into a `PixelModule`; I-32 forbids it, since `display/` sits below `pixel_array/`.
+
 ## Open questions
 
 - **Before 1.0:** does PN become `PersonName`, and do DA/TM/DT become date types (C-15)? Typed tags fix each VR's Dart type in every generated constant, so this is free only before 1.0 (data §8).
 - **Before 1.0:** should the wrong value type for a typed tag fail to compile (I-24)? `ds.set(DicomTags.rows, 'x')` compiles today, because Dart widens `T` to `Object`. `set` and `setAll` refuse it at runtime with an `ArgumentError`. A compile-time guard would change the public writing API, for example setters bound to the tag, so that `T` comes from the tag alone. `test/compile_fail/` pins the gap, so closing it means editing that file.
+- **Before 0.1.0 (net):** should `StorageScp.start` and `sendCMove` check an AE title as the requestor does? They check only the length. `StorageScp`'s message says "printable ASCII" without checking it, and a destination holding a backslash would go out as two Move Destination values. Using `acse/negotiation.dart`'s check in both would refuse control characters and backslashes there too.
+- **Before 0.1.0 (pixel):** should `PixelArray`'s public constructor check that `values` is the typed list of the module's dtype, as its doc says? Today `PixelArray(Uint8List(n), module16)` reports `uint16` over byte values. Decoding always passes the matching list; the check would refuse the mismatch with an `ArgumentError`.
 
 **Answered 2026-10-17, planning M3:** C-GET stays the retrieve path the docs and examples lead with, and C-MOVE is documented beside it. The local Orthanc is the first testing PACS, and the first consumer's own PACS is checked at M5.
 
