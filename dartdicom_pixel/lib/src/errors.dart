@@ -15,7 +15,7 @@ sealed class PixelDataException extends DicomException {
 final class UnsupportedPixelEncoding extends PixelDataException {
   UnsupportedPixelEncoding(String problem, {this.tag, this.transferSyntax})
       : super('UnsupportedPixelEncoding: '
-            '${tag == null ? '' : '${_describe(tag)} '}$problem');
+            '${tag == null ? '' : '${describeTag(tag)} '}$problem');
 
   /// The attribute whose value this version doesn't support, if one.
   final Tag? tag;
@@ -28,7 +28,7 @@ final class UnsupportedPixelEncoding extends PixelDataException {
 /// or Pixel Data doesn't hold the frames the module declares.
 final class InvalidPixelModule extends PixelDataException {
   InvalidPixelModule(this.tag, String problem)
-      : super('InvalidPixelModule: ${_describe(tag)} $problem');
+      : super('InvalidPixelModule: ${describeTag(tag)} $problem');
 
   /// The attribute that is missing or invalid.
   final Tag tag;
@@ -56,12 +56,4 @@ T readAttribute<T>(Tag tag, T Function() read) {
   } on DicomDataException {
     throw InvalidPixelModule(tag, 'cannot be read as its VR');
   }
-}
-
-/// `(0028,0010) Rows`: the number and the keyword, never a value.
-String _describe(Tag tag) {
-  String hex(int n) => n.toRadixString(16).padLeft(4, '0').toUpperCase();
-  final label = '(${hex(tag.group)},${hex(tag.element)})';
-  final keyword = Dictionary.standard.entry(tag)?.keyword ?? '';
-  return keyword.isEmpty ? label : '$label $keyword';
 }
