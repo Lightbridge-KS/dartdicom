@@ -14,7 +14,7 @@ import 'package:dartdicom_net/dartdicom_net.dart';
 import 'package:dartdicom_net/src/dimse/message.dart';
 import 'package:test/test.dart';
 
-import 'support/peer.dart';
+import '../support/peer.dart';
 
 final _file = DicomFile.fromBytes(
     File('../fixtures/data/synthetic/phi_canary.dcm').readAsBytesSync());

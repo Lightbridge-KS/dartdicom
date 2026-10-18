@@ -12,7 +12,7 @@ import 'package:dartdicom_net/dartdicom_net.dart';
 import 'package:dartdicom_net/src/dimse/message.dart';
 import 'package:test/test.dart';
 
-import 'support/peer.dart';
+import '../support/peer.dart';
 
 final _instance = DicomFile.fromBytes(
         File('../fixtures/data/synthetic/ct_signed_explicit_le.dcm')

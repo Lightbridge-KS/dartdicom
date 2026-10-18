@@ -22,7 +22,7 @@ import 'package:dartdicom_net/src/dul/framer.dart';
 import 'package:dartdicom_net/src/pdu/pdus.dart';
 import 'package:test/test.dart';
 
-import 'support/peer.dart';
+import '../support/peer.dart';
 
 final _env = Platform.environment;
 final _cases = int.tryParse(_env['DARTDICOM_FUZZ_CASES'] ?? '') ?? 2000;

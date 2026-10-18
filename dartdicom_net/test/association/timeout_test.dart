@@ -14,7 +14,7 @@ import 'package:dartdicom_net/src/pdu/pdus.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:test/test.dart';
 
-import 'support/peer.dart';
+import '../support/peer.dart';
 
 const _ae = ApplicationEntity(
   aeTitle: 'SCU',

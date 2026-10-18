@@ -14,7 +14,7 @@ import 'package:dartdicom_net/src/pdu/items.dart';
 import 'package:dartdicom_net/src/pdu/pdus.dart';
 import 'package:test/test.dart';
 
-import 'support/peer.dart';
+import '../support/peer.dart';
 
 DicomFile _fixture(String path) =>
     DicomFile.fromBytes(File('../fixtures/data/$path').readAsBytesSync());
