@@ -58,6 +58,12 @@ void main() {
       expect(lut.apply(-0.1), 0); // -0.1 truncates to the entry for -1
     });
 
+    test('an infinite input takes an end of the table', () {
+      final lut = VoiLut(firstMapped: 0, bitsPerEntry: 8, entries: [0, 255]);
+      expect(lut.apply(double.infinity), 255);
+      expect(lut.apply(double.negativeInfinity), 0);
+    });
+
     test('takes 8–16 bits and at least one entry', () {
       expect(() => VoiLut(firstMapped: 0, bitsPerEntry: 7, entries: [1]),
           throwsArgumentError);

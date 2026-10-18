@@ -54,6 +54,7 @@ final class LutTable {
   /// entry and inputs past the end the last (PS3.3 C.11.1.1, as pydicom).
   /// A fractional input is truncated toward the entry below it.
   int lookup(double x) {
+    if (!x.isFinite) return x == double.infinity ? entries.last : entries.first;
     final index = (x - firstMapped).floor();
     if (index <= 0) return entries.first;
     if (index >= entries.length) return entries.last;

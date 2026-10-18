@@ -10,8 +10,8 @@ read_when:
 
 Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../design/01-system-architecture.md) · [data architecture](../design/02-data-architecture.md) · [surface architecture](../design/03-surface-architecture.md) · [codebase blueprint](../structure/01-codebase-blueprint.md)
 
-**Now:** M4 `dartdicom_pixel` P0, planned 2026-10-18 (steps 0–7 below). **M3 is done** (2026-10-17, `9f4f10a`…): every exit criterion met; the nightly `interop` job runs the matrix on CI. **M2 is done** (2026-10-17, `94d6759`…`c97b788`): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
-**Next:** M5, 0.1.0 and the first consumer.
+**Now:** M5, 0.1.0 and the first consumer. **M4 is done** (2026-10-18, `bcd4f90`…): every exit criterion met; the corpus job runs the pixel gate. **M3 is done** (2026-10-17, `9f4f10a`…): every exit criterion met; the nightly `interop` job runs the matrix on CI. **M2 is done** (2026-10-17, `94d6759`…`c97b788`): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
+**Next:** P1, in order of demand.
 
 ## Roadmap
 
@@ -232,12 +232,27 @@ Each step ends with the dry and floor gates green; `just live` runs after step 6
 - [x] **3. Native decoding (X-01, X-02)** (`b0a9dc6`). 1-bit and 32-bit (safe on the web), PlanarConfiguration 1, `allFrames()` and frame views; `vs_pydicom_test` without skips.
 - [x] **4. Pixel corpus gate** (`0280d41`). A ratchet over the corpus's native pixel sha256; `corpus.yml` runs it.
 - [x] **5. Modality LUT** (`3897143`). Per-frame attribute resolution, rescale or a table, `toModality()`, bit-exact against pydicom.
-- [ ] **6. VOI and display.** `Voi`, `ds.voi()`, `toDisplay([voi])` folded into one lookup table, `autoWindow()`; within one gray level of the goldens; `voiWindow` callers move.
-- [ ] **7. Fuzz, pixel PHI canary, close.**
+- [x] **6. VOI and display** (`782511a`). `Voi` (`VoiWindow` with `VoiFunction`, `VoiLut`), `ds.voi({frame, index, preferLut})`, `toDisplay([voi])` folded into one lookup table over the stored values, `autoWindow()`. `voiWindow`'s callers moved, and the live gates render through `toDisplay()`. All 19 interop tests passed, and the example rendered by C-GET and C-MOVE.
+- [x] **7. Fuzz, pixel PHI canary, close.**
+  - **Fuzz:** `dartdicom_pixel/test/fuzz_test.dart` (I-30) mutates the Image Pixel module, the LUT Sequences, windows, rescale values and functional groups, and truncates Pixel Data; `just fuzz` covers pixel too. It found three bugs:
+    - MONOCHROME with three samples crashed `toDisplay` with an `ArgumentError`;
+    - a finite slope that overflows a double gave `autoWindow` an infinite window;
+    - an infinite input reached a LUT's `floor()`.
 
-**Exit:**
-- pixel arrays match pydicom's sha256 for the native fixtures, and the pixel corpus gate passes its ratchet
-- modality values are bit-exact, and VOI output matches pydicom's `apply_voi_lut` within one gray level (I-33)
+    All three are fixed, and a 200,000-case run is clean.
+  - **PHI canary:** `phi_canary_test.dart` runs the canary through decode, the LUTs and display. It also puts the marker into the text attributes pixel code reads (Photometric Interpretation, VOI LUT Function). No message or `toString` shows it, and a planted leak in a message fails the test.
+
+**Exit** (all met, 2026-10-18):
+- pixel arrays match pydicom's sha256, dtype and shape for all 39 native fixtures (1, 8, 16 and 32 bits, planar, Big Endian), and the pixel corpus gate passes its ratchet over 48 native files; its one entry is YBR_FULL (X-08)
+- modality values are bit-exact against pydicom's `apply_modality_lut` on 34 fixtures and 18 corpus files, functional groups included; every VOI is within one gray level of `apply_voi_lut` (I-33): 31 fixture variants and 13 corpus ones
+
+**Tests that flipped:**
+- the width-1 window at `x == center − 0.5` now gives black;
+- pixel's `UnsupportedError` and `DicomParseException` became `PixelDataException`s;
+- datasets without Samples per Pixel are refused;
+- `vs_pydicom_test` lost its Bits Allocated and planar skips;
+- `ds.voiWindow()` became `ds.voi()` and `toDisplay()`;
+- a rescale with only an intercept is the identity, as in pydicom.
 
 ### M5 0.1.0 and the first consumer
 
@@ -283,6 +298,13 @@ These run in order of demand:
 
 | Contract | Evidence |
 |---|---|
+| pydicom 3.0.2's per-frame 1-bit decode reads one byte short when a frame's bits cross a byte boundary (`pixels/decoders/base.py`). Its all-frames path is right, so the LUT goldens decode every frame at once and split. | `seg_1bit_unaligned` (3×5 frames), 2026-10-18 |
+| pydicom's `apply_voi` indexes a VOI LUT in the table's own dtype. It truncates a float input, and wraps an 8-bit table's index past 255 before clipping. dartdicom clamps `floor(x − first)` to the table. The generator keeps committed fixtures inside pydicom's domain. | `processing.py`, `fixtures/src/dartdicom_fixtures/lut.py`, 2026-10-18 |
+| pydicom takes 8- or 16-bit Modality LUTs only (`uint{bits}`) and VOI LUTs of 8 or 10–16 bits. It indexes a Modality LUT in the stored values' dtype, so unsigned values with a negative first map raise. dartdicom takes 8–16 bits for both. | `processing.py`, `modality_test.dart`, 2026-10-18 |
+| pydicom's `pixel_array`, against what dartdicom returns: <br>• YBR_FULL: pydicom converts it to RGB (`as_rgb`); dartdicom returns the stored values. <br>• YBR_FULL_422: pydicom expands it; dartdicom refuses it (X-08). <br>• PALETTE COLOR: both return the indices. <br>• Frames past Number of Frames: pydicom returns them (`allow_excess_frames`); dartdicom ignores them. | `pixels/decoders/base.py`, the pixel corpus gate, 2026-10-18 |
+| pydicom decodes OB Pixel Data over 8 bits in Big Endian in the transfer syntax's byte order, and never swaps 1-bit OW. The core writer disagrees on both (blueprint F46), but no fixture or corpus file holds either. | pydicom 3.0.2, in memory, 2026-10-18 |
+| `np.exp` differs by CPU, so a sigmoid value near a rounding tie could round one way on macOS and the other on Linux CI (I-28). The generator refuses such fixtures, except at the center, where `exp(0)` is exact. | `fixtures/src/dartdicom_fixtures/lut.py`, 2026-10-18 |
+| A finite Rescale Slope can still carry a stored value past a double's range (30000 × 1e305). `toModality()` keeps the infinity, a window shows it white, and `autoWindow()` refuses it as an `InvalidPixelModule`. MONOCHROME with three samples decodes but doesn't display. | `fuzz_test.dart`, 2026-10-18 |
 | DCMTK 3.6.7's `dcmqrscp` (Ubuntu 24.04's, the CI's) segfaults in single-process mode (`-s`) after its first association, with DCMTK's own `findscu` too; 3.7 doesn't. The interop peers run it forking, the default. | `interop.yml` run, reproduced in an `ubuntu:24.04` container, 2026-10-17 |
 | Under `fake_async`, a closed or cancelled stream (the DUL's transport, `StreamIterator.cancel`) never completes inside the fake zone, so a DUL abort or close never finishes there. Timer tests assert outcomes before the close; the requestor fuzz runs in real time with 50 ms timeouts instead. | `timeout_test.dart`, `fuzz_test.dart`, 2026-10-17 |
 | A command set that doesn't decode is the peer's protocol error, not a data error: the fuzz found a mutated one leaking `DicomParseException`, and one with no Command Field leaking `MissingElementException`. `DimseMessage.decodeCommand` decodes every value at once and throws `DimseProtocolException`. | `dartdicom_net/test/fuzz_test.dart`, 2026-10-17 |
@@ -297,7 +319,7 @@ These run in order of demand:
 | pydicom decodes 8-bit OW Big Endian Pixel Data by swapping 16-bit words across the whole padded value, so an odd image's last pixel comes from the padding word (`SC_rgb_small_odd_big_endian.dcm`). `dartdicom_pixel` matches it. | pydicom 3.0.2, 2026-10-17 |
 | A header-only read of an 8 MiB file through `FileSource` reads one 64 KiB window, and so does a full read with the Pixel Data deferred. A deferred `Dataset` moves to another isolate and loads its value there (I-14). Async and sync reads agree on every fixture in all three modes. | `file_source_test.dart`, 2026-10-17 |
 | dart2js's `Random.secure()` throws under Node (the SDK runtime calls the `crypto` getter with the wrong receiver), but works in Chrome and on the VM. `Uid.generate`'s tests skip Node; Node is not a target. | `uid_test.dart` on node and chrome, Node 26, 2026-10-17 |
-| Native frames decoded by `dartdicom_pixel` match pydicom 3.0.2's `pixel_array` (sha256, after `correct_unused_bits`) for all 15 native Little Endian fixtures with 8 or 16 bits allocated, multi-frame and interleaved RGB included. An aligned host-order frame is a zero-copy view. | `dartdicom_pixel/test/vs_pydicom_test.dart`, 2026-10-17 |
+| Native pixels decoded by `dartdicom_pixel` match pydicom 3.0.2's `pixel_array` (sha256, dtype and shape, after `correct_unused_bits`) for all 39 native fixtures, at 1, 8, 16 and 32 bits, planar and Big Endian included, and 47 of the 48 native pydicom-data files. The 48th is YBR_FULL, which pydicom converts to RGB. An aligned host-order frame is a zero-copy view. *(amended, M4)* | `vs_pydicom_test.dart`, `test/gates/corpus_test.dart`, 2026-10-18 |
 | The M1 parser reads all 22 Little Endian fixtures, the 5 RLE (encapsulated) ones included, and agrees with pydicom 3.0.2 on every element of each (I-11 on the slice). Every one of them round-trips byte for byte, except pydicom's `rtdose.dcm` and `rtplan.dcm`: their file meta SOP Instance UID contradicts the dataset's, so the write is refused (I-17, data §5). | `vs_pydicom_test.dart`, `round_trip_test.dart`, 2026-10-17 |
 | pydicom's test files carry non-zero 128-byte preambles (a TIFF header), so `DicomFile` keeps the preamble it read | `round_trip_test.dart`, 2026-10-17 |
 | `examples/bin/retrieve_and_render.dart` retrieves CT_small's series from the compose Orthanc (C-ECHO, C-FIND STUDY and SERIES, C-GET 1/1) and renders a 128×128 frame that reads as an axial CT slice; `just live` checks the PGM | `scripts/live_gates.sh`, 2026-10-17 |

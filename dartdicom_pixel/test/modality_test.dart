@@ -42,6 +42,16 @@ void main() {
     });
   });
 
+  test('a rescale that overflows a double has no automatic window', () {
+    // Found by the fuzz: 30000 × 1e305 is past a double's range.
+    final frame =
+        image16([0, 30000], slope: 1e305, intercept: 0).pixels.frame(0);
+    expect(frame.toModality().last, double.infinity);
+    expect(frame.autoWindow, _invalid(DicomTags.rescaleSlope));
+    // 0 is ((0 + 0.5) / 99 + 0.5) × 255 = 128.8; infinity is white.
+    expect(frame.toDisplay(VoiWindow(0, 100)).gray, [129, 255]);
+  });
+
   group('Modality LUT Sequence', () {
     Dataset withTable(Dataset item, {List<int> values = const [0, 1, 2, 3]}) =>
         image16(values, signed: false, slope: 3, intercept: 7)

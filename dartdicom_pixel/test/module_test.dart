@@ -152,6 +152,19 @@ void main() {
     });
   });
 
+  test('MONOCHROME with three samples decodes, but does not display', () {
+    // Found by the fuzz: the buffer would hold three bytes per pixel.
+    final ds = parsed([
+      ...pixelModule(
+          rows: 1, columns: 1, bitsAllocated: 8, samples: 3, planar: 0),
+      (pixelDataTag, 'OB', [1, 2, 3, 0]),
+    ]);
+    final frame = ds.pixels.frame(0);
+    expect(frame.values, [1, 2, 3]);
+    expect(
+        () => frame.toDisplay(), throwsA(_invalid(DicomTags.samplesPerPixel)));
+  });
+
   group('Pixel Data that does not hold the frame is an InvalidPixelModule', () {
     test('shorter than one frame', () {
       final ds = image16([1, 2])

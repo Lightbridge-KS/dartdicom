@@ -166,6 +166,11 @@ final class PixelArray {
           '`values`',
           tag: DicomTags.photometricInterpretation);
     }
+    if (samplesPerPixel != 1) {
+      // PS3.3 C.7.6.3.1.2: MONOCHROME1 and MONOCHROME2 have one sample.
+      throw InvalidPixelModule(DicomTags.samplesPerPixel,
+          'must be 1 for MONOCHROME1 and MONOCHROME2');
+    }
     final own = switch (dataset) {
       final ds? when voi == null => datasetVoi(ds, frame: firstFrame),
       _ => voi,
@@ -184,6 +189,11 @@ final class PixelArray {
   /// VOI, and a starting point for a window the user drags.
   VoiWindow autoWindow() {
     final (lo, hi) = modalityRange() ?? (0.0, 0.0);
+    if (!lo.isFinite || !hi.isFinite) {
+      // A finite slope can still carry a stored value past a double's range.
+      throw InvalidPixelModule(DicomTags.rescaleSlope,
+          "takes modality values past a double's range");
+    }
     // The LINEAR window whose ramp runs from exactly lo to hi.
     return VoiWindow((lo + hi) / 2 + 0.5, hi - lo + 1);
   }
