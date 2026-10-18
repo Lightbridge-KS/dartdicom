@@ -44,8 +44,21 @@ String cacheRoot() {
   return '${env['HOME']}/.cache/dartdicom';
 }
 
-/// The LUT goldens under [root] (blueprint F47), sorted by file.
-List<Map<String, Object?>> lutRecords(Directory root) => [
+/// One file's LUT golden (blueprint F47): pydicom's output frame by frame,
+/// or the [error] it raised decoding the file.
+typedef LutGolden = ({String file, String? error, List<LutFrame> frames});
+
+/// One frame of a [LutGolden]: the SHA-256 of pydicom's modality values,
+/// and its VOI variants.
+typedef LutFrame = ({String modality, List<VoiVariant> voi});
+
+/// One VOI of a frame: a LUT or a window ([kind]) by [index], and pydicom's
+/// output rescaled to 0–255 ([gray]), or the [error] it raised instead.
+typedef VoiVariant = ({String kind, int index, String? error, Uint8List? gray});
+
+/// The LUT goldens under [root], sorted by file: the one reader of their
+/// JSON.
+List<LutGolden> lutGoldens(Directory root) => [
       for (final file
           in root
               .listSync(recursive: true)
@@ -53,8 +66,52 @@ List<Map<String, Object?>> lutRecords(Directory root) => [
               .where((f) => f.path.endsWith('.json'))
               .toList()
             ..sort((a, b) => a.path.compareTo(b.path)))
-        jsonDecode(file.readAsStringSync()) as Map<String, Object?>,
+        _golden(jsonDecode(file.readAsStringSync()) as Map<String, Object?>),
     ];
+
+LutGolden _golden(Map<String, Object?> record) => (
+      file: record['file']! as String,
+      error: record['error'] as String?,
+      frames: [
+        for (final frame in (record['frames'] as List<Object?>? ?? const [])
+            .cast<Map<String, Object?>>())
+          (
+            modality: frame['modality']! as String,
+            voi: [
+              for (final v in (frame['voi']! as List<Object?>)
+                  .cast<Map<String, Object?>>())
+                (
+                  kind: v['kind']! as String,
+                  index: v['index']! as int,
+                  error: v['error'] as String?,
+                  gray: switch (v['gray']) {
+                    final String gray => base64Decode(gray),
+                    _ => null,
+                  },
+                ),
+            ],
+          ),
+      ],
+    );
+
+/// The first way [golden]'s frames disagree with dartdicom's, frame by
+/// frame: its modality values, then each VOI variant ([voiMismatch]).
+/// `null` when every frame agrees. [ds] is the file's dataset.
+String? lutMismatch(Dataset ds, LutGolden golden) {
+  final px = ds.pixels;
+  for (final (f, expected) in golden.frames.indexed) {
+    final frame = px.frame(f);
+    if (modalitySha(frame.toModality()) != expected.modality) {
+      return 'frame $f: modality values differ';
+    }
+    for (final variant in expected.voi) {
+      if (voiMismatch(ds, frame, variant) case final problem?) {
+        return 'frame $f, ${variant.kind} ${variant.index}: $problem';
+      }
+    }
+  }
+  return null;
+}
 
 /// The SHA-256 of [values] as float64, little endian: how the LUT goldens
 /// hash pydicom's `apply_modality_lut` output.
@@ -70,11 +127,8 @@ String modalitySha(Float64List values) {
 /// every pixel of [frame]'s display is within one gray level of pydicom's
 /// `apply_voi_lut` (rescaled to 0–255, before MONOCHROME1's inversion),
 /// else what differs. [ds] is the dataset [frame] came from.
-String? voiMismatch(
-    Dataset ds, PixelArray frame, Map<String, Object?> variant) {
-  final kind = variant['kind']! as String;
-  final index = variant['index']! as int;
-  final error = variant['error'] as String?;
+String? voiMismatch(Dataset ds, PixelArray frame, VoiVariant variant) {
+  final (:kind, :index, :error, :gray) = variant;
   // No output range to rescale pydicom's values by: nothing to compare.
   if (error == 'ZeroDivisionError') return null;
   final Voi? voi;
@@ -98,7 +152,7 @@ String? voiMismatch(
   if ((kind == 'lut') != (voi is VoiLut)) {
     return 'chose ${voi.runtimeType} for a $kind';
   }
-  final expected = base64Decode(variant['gray']! as String);
+  final expected = gray!;
   final invert = frame.module.photometricInterpretation == 'MONOCHROME1';
   var worst = 0;
   for (var i = 0; i < expected.length; i++) {

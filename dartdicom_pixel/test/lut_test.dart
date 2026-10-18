@@ -5,8 +5,8 @@
 @TestOn('vm')
 library;
 
-import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_pixel/dartdicom_pixel.dart';
@@ -15,61 +15,58 @@ import 'package:test/test.dart';
 import 'support/golden.dart';
 
 void main() {
-  final records = lutRecords(Directory('../fixtures/data/lut'));
+  final goldens = lutGoldens(Directory('../fixtures/data/lut'));
 
   test('every grayscale native fixture has a LUT golden', () {
-    expect(records.length, greaterThanOrEqualTo(30));
+    expect(goldens.length, greaterThanOrEqualTo(30));
   });
 
   test('the VOI check catches a pixel two gray levels off', () {
     // ct_sigmoid's first window, with one pixel of pydicom's moved by 2.
-    final record =
-        records.firstWhere((r) => r['file'] == 'synthetic/ct_sigmoid.dcm');
-    final frame =
-        (record['frames']! as List<Object?>).first! as Map<String, Object?>;
-    final variant =
-        (frame['voi']! as List<Object?>).first! as Map<String, Object?>;
-    final gray = base64Decode(variant['gray']! as String);
+    final golden =
+        goldens.firstWhere((g) => g.file == 'synthetic/ct_sigmoid.dcm');
+    final variant = golden.frames.first.voi.first;
+    final gray = Uint8List.fromList(variant.gray!);
     gray[100] = gray[100] < 128 ? gray[100] + 2 : gray[100] - 2;
     final ds = DicomFile.fromBytes(
             File('../fixtures/data/synthetic/ct_sigmoid.dcm').readAsBytesSync())
         .dataset;
     expect(voiMismatch(ds, ds.pixels.frame(0), variant), isNull);
-    expect(
-        voiMismatch(
-            ds, ds.pixels.frame(0), {...variant, 'gray': base64Encode(gray)}),
+    final moved = (
+      kind: variant.kind,
+      index: variant.index,
+      error: variant.error,
+      gray: gray,
+    );
+    expect(voiMismatch(ds, ds.pixels.frame(0), moved),
         contains('2 gray levels off'));
   });
 
-  for (final record in records) {
-    final path = record['file']! as String;
-    final frames =
-        (record['frames']! as List<Object?>).cast<Map<String, Object?>>();
+  for (final golden in goldens) {
+    final path = golden.file;
     final ds =
         DicomFile.fromBytes(File('../fixtures/data/$path').readAsBytesSync())
             .dataset;
 
     test('$path: modality values equal apply_modality_lut, frame by frame', () {
       final px = ds.pixels;
-      expect(px.numberOfFrames, frames.length);
-      for (final (f, golden) in frames.indexed) {
-        expect(modalitySha(px.frame(f).toModality()), golden['modality'],
+      expect(px.numberOfFrames, golden.frames.length);
+      for (final (f, frame) in golden.frames.indexed) {
+        expect(modalitySha(px.frame(f).toModality()), frame.modality,
             reason: 'frame $f');
       }
     });
 
     final variants = [
-      for (final (f, golden) in frames.indexed)
-        for (final v
-            in (golden['voi']! as List<Object?>).cast<Map<String, Object?>>())
-          (f, v),
+      for (final (f, frame) in golden.frames.indexed)
+        for (final v in frame.voi) (f, v),
     ];
     if (variants.isEmpty) continue;
     test('$path: each VOI is within one gray level of apply_voi_lut', () {
       final px = ds.pixels;
       for (final (f, variant) in variants) {
         expect(voiMismatch(ds, px.frame(f), variant), isNull,
-            reason: 'frame $f, ${variant['kind']} ${variant['index']}');
+            reason: 'frame $f, ${variant.kind} ${variant.index}');
       }
     });
   }

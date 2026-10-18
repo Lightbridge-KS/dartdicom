@@ -37,9 +37,6 @@ void main() {
       fail('no corpus golden at ${goldenRoot.path}; run `uv run fixtures '
           'corpus fetch && uv run fixtures golden --corpus` in fixtures/');
     }
-    final expected = {
-      for (final e in pixelCorpusExpectedFailures) e.file: e.reason,
-    };
     final failures = <String, String>{};
     var compared = 0;
     final goldens = goldenRoot
@@ -81,22 +78,8 @@ void main() {
       }
     }
 
-    final unexpected = {
-      for (final MapEntry(:key, :value) in failures.entries)
-        if (!expected.containsKey(key)) key: value,
-    };
-    final fixed = [
-      for (final p in expected.keys)
-        if (!failures.containsKey(p)) p
-    ];
-    print('pixel corpus: $compared native files compared, '
-        '${failures.length} failing (listed: ${expected.length})');
-    expect(unexpected, isEmpty,
-        reason: 'new failures; fix them, or list them with a reason in '
-            'pixelCorpusExpectedFailures (test/gates/expected.dart):\n'
-            '${unexpected.entries.map((e) => '${e.key}: ${e.value}').join('\n')}');
-    expect(fixed, isEmpty,
-        reason: 'these now pass; remove them from pixelCorpusExpectedFailures');
+    _ratchet('pixel corpus: $compared native files compared', failures,
+        pixelCorpusExpectedFailures, 'pixelCorpusExpectedFailures');
   }, skip: present || required ? false : 'no corpus in the cache');
 
   final lutRoot = Directory('$cache/lut/$_corpus');
@@ -105,57 +88,45 @@ void main() {
       fail('no LUT golden at ${lutRoot.path}; run `uv run fixtures golden '
           '--corpus` in fixtures/');
     }
-    final expected = {
-      for (final e in lutCorpusExpectedFailures) e.file: e.reason,
-    };
     final failures = <String, String>{};
     var compared = 0;
-    for (final record in lutRecords(lutRoot)) {
-      if (record.containsKey('error')) continue; // pydicom couldn't decode it
-      final path = record['file']! as String;
-      final frames =
-          (record['frames']! as List<Object?>).cast<Map<String, Object?>>();
+    for (final golden in lutGoldens(lutRoot)) {
+      if (golden.error != null) continue; // pydicom couldn't decode it
       compared++;
       try {
-        final ds =
-            DicomFile.fromBytes(File('$corpusRoot/$path').readAsBytesSync())
-                .dataset;
-        final px = ds.pixels;
-        frames:
-        for (final (f, golden) in frames.indexed) {
-          final frame = px.frame(f);
-          if (modalitySha(frame.toModality()) != golden['modality']) {
-            failures[path] = 'frame $f: modality values differ';
-            break;
-          }
-          for (final variant in (golden['voi']! as List<Object?>)
-              .cast<Map<String, Object?>>()) {
-            if (voiMismatch(ds, frame, variant) case final problem?) {
-              failures[path] = 'frame $f, ${variant['kind']} '
-                  '${variant['index']}: $problem';
-              break frames;
-            }
-          }
+        final ds = DicomFile.fromBytes(
+                File('$corpusRoot/${golden.file}').readAsBytesSync())
+            .dataset;
+        if (lutMismatch(ds, golden) case final problem?) {
+          failures[golden.file] = problem;
         }
       } on DicomException catch (e) {
-        failures[path] = e.message;
+        failures[golden.file] = e.message;
       }
     }
-    final unexpected = {
-      for (final MapEntry(:key, :value) in failures.entries)
-        if (!expected.containsKey(key)) key: value,
-    };
-    final fixed = [
-      for (final p in expected.keys)
-        if (!failures.containsKey(p)) p
-    ];
-    print('LUT corpus: $compared grayscale files compared, '
-        '${failures.length} failing (listed: ${expected.length})');
-    expect(unexpected, isEmpty,
-        reason: 'new failures; fix them, or list them with a reason in '
-            'lutCorpusExpectedFailures (test/gates/expected.dart):\n'
-            '${unexpected.entries.map((e) => '${e.key}: ${e.value}').join('\n')}');
-    expect(fixed, isEmpty,
-        reason: 'these now pass; remove them from lutCorpusExpectedFailures');
+    _ratchet('LUT corpus: $compared grayscale files compared', failures,
+        lutCorpusExpectedFailures, 'lutCorpusExpectedFailures');
   }, skip: present || required ? false : 'no corpus in the cache');
+}
+
+/// The ratchet over [listed], the list named [list] in expected.dart: the
+/// files in [failures] must be exactly the ones it lists, so it only
+/// shrinks. Prints [tally] with the counts first.
+void _ratchet(String tally, Map<String, String> failures,
+    List<({String file, String reason})> listed, String list) {
+  final expected = {for (final e in listed) e.file: e.reason};
+  final unexpected = {
+    for (final MapEntry(:key, :value) in failures.entries)
+      if (!expected.containsKey(key)) key: value,
+  };
+  final fixed = [
+    for (final p in expected.keys)
+      if (!failures.containsKey(p)) p
+  ];
+  print('$tally, ${failures.length} failing (listed: ${expected.length})');
+  expect(unexpected, isEmpty,
+      reason: 'new failures; fix them, or list them with a reason in '
+          '$list (test/gates/expected.dart):\n'
+          '${unexpected.entries.map((e) => '${e.key}: ${e.value}').join('\n')}');
+  expect(fixed, isEmpty, reason: 'these now pass; remove them from $list');
 }
