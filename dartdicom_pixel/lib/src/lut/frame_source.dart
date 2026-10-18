@@ -12,19 +12,9 @@ import '../errors.dart';
 /// Slope never meets a top-level Rescale Intercept).
 Dataset frameSource(Dataset ds, int frame, One<Sequence> macro) {
   Dataset? itemOf(One<Sequence> groups, int index) {
-    final Sequence? items;
-    try {
-      items = ds.get(groups);
-    } on DicomDataException {
-      throw InvalidPixelModule(groups, 'cannot be read as a sequence');
-    }
+    final items = ds.attribute(groups);
     if (items == null || index >= items.length) return null;
-    final Sequence? macros;
-    try {
-      macros = items[index].get(macro);
-    } on DicomDataException {
-      throw InvalidPixelModule(macro, 'cannot be read as a sequence');
-    }
+    final macros = items[index].attribute(macro);
     return macros == null || macros.isEmpty ? null : macros.first;
   }
 

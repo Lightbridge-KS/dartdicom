@@ -137,7 +137,7 @@ final class VoiLut extends Voi {
 Voi? datasetVoi(Dataset ds,
     {int frame = 0, int index = 0, bool preferLut = true}) {
   final source = frameSource(ds, frame, DicomTags.frameVoilutSequence);
-  final luts = _read(source, DicomTags.voilutSequence) ?? Sequence(const []);
+  final luts = source.attribute(DicomTags.voilutSequence) ?? Sequence(const []);
   // pydicom checks the first item only.
   final hasLut = luts.isNotEmpty &&
       luts.first.contains(DicomTags.lutDescriptor) &&
@@ -180,38 +180,18 @@ String? _widthProblem(double width, VoiFunction function) {
   };
 }
 
-VoiFunction _function(Dataset source) {
-  final String? value;
-  try {
-    value = source.get(DicomTags.voilutFunction);
-  } on DicomDataException {
-    throw InvalidPixelModule(DicomTags.voilutFunction, 'cannot be read');
-  }
-  return switch (value?.trim().toUpperCase()) {
-    null || '' || 'LINEAR' => VoiFunction.linear,
-    'LINEAR_EXACT' => VoiFunction.linearExact,
-    'SIGMOID' => VoiFunction.sigmoid,
-    _ => throw UnsupportedPixelEncoding(
-        'is not LINEAR, LINEAR_EXACT or SIGMOID',
-        tag: DicomTags.voilutFunction),
-  };
-}
-
-Sequence? _read(Dataset ds, One<Sequence> tag) {
-  try {
-    return ds.get(tag);
-  } on DicomDataException {
-    throw InvalidPixelModule(tag, 'cannot be read as a sequence');
-  }
-}
+VoiFunction _function(Dataset source) =>
+    switch (source.attribute(DicomTags.voilutFunction)?.trim().toUpperCase()) {
+      null || '' || 'LINEAR' => VoiFunction.linear,
+      'LINEAR_EXACT' => VoiFunction.linearExact,
+      'SIGMOID' => VoiFunction.sigmoid,
+      _ => throw UnsupportedPixelEncoding(
+          'is not LINEAR, LINEAR_EXACT or SIGMOID',
+          tag: DicomTags.voilutFunction),
+    };
 
 List<double> _finite(Dataset ds, Many<double> tag) {
-  final List<double> values;
-  try {
-    values = ds.getAll(tag);
-  } on DicomDataException {
-    throw InvalidPixelModule(tag, 'cannot be read as its VR');
-  }
+  final values = ds.attributes(tag);
   if (values.any((v) => !v.isFinite)) {
     throw InvalidPixelModule(tag, 'must hold finite numbers');
   }

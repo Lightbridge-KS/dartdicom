@@ -46,7 +46,8 @@ final class PixelModule {
     if (planar != 0 && planar != 1) {
       throw InvalidPixelModule(DicomTags.planarConfiguration, 'must be 0 or 1');
     }
-    final photometric = _read(ds, DicomTags.photometricInterpretation)?.trim();
+    final photometric =
+        ds.attribute(DicomTags.photometricInterpretation)?.trim();
     if (photometric == null || photometric.isEmpty) {
       throw InvalidPixelModule(
           DicomTags.photometricInterpretation, 'is required for Pixel Data');
@@ -56,7 +57,7 @@ final class PixelModule {
           'is not a Photometric Interpretation PS3.3 C.7.6.3.1.2 defines');
     }
     // 0 or empty is read as one frame, as pydicom does.
-    final frames = _read(ds, DicomTags.numberOfFrames) ?? 0;
+    final frames = ds.attribute(DicomTags.numberOfFrames) ?? 0;
     if (frames < 0) {
       throw InvalidPixelModule(DicomTags.numberOfFrames, 'must be at least 1');
     }
@@ -70,7 +71,7 @@ final class PixelModule {
       photometricInterpretation: photometric,
       planarConfiguration: planar,
       numberOfFrames: frames == 0 ? 1 : frames,
-      pixelPaddingValue: _read(ds, DicomTags.pixelPaddingValue),
+      pixelPaddingValue: ds.attribute(DicomTags.pixelPaddingValue),
     );
   }
 
@@ -129,7 +130,7 @@ const _photometrics = {
 };
 
 int _required(Dataset ds, One<int> tag) =>
-    _read(ds, tag) ??
+    ds.attribute(tag) ??
     (throw InvalidPixelModule(tag, 'is required for Pixel Data'));
 
 int _dimension(Dataset ds, One<int> tag) {
@@ -138,14 +139,4 @@ int _dimension(Dataset ds, One<int> tag) {
     throw InvalidPixelModule(tag, 'must be 1–65535');
   }
   return value;
-}
-
-/// [tag]'s value, or `null` if it is absent. A value core can't decode is
-/// an [InvalidPixelModule], so pixel failures stay in one sealed tree.
-T? _read<T extends Object>(Dataset ds, One<T> tag) {
-  try {
-    return ds.get(tag);
-  } on DicomDataException {
-    throw InvalidPixelModule(tag, 'cannot be read as its VR');
-  }
 }

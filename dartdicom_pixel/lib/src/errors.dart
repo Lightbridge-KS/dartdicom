@@ -34,6 +34,30 @@ final class InvalidPixelModule extends PixelDataException {
   final Tag tag;
 }
 
+/// Reads that keep pixel failures in one sealed tree (I-30): a value core
+/// can't read as its tag's type is an [InvalidPixelModule] naming the tag,
+/// never core's [DicomDataException]. Not exported.
+extension AttributeReads on Dataset {
+  /// [tag]'s value, or `null` if it is absent or empty.
+  T? attribute<T extends Object>(One<T> tag) =>
+      readAttribute(tag, () => get(tag));
+
+  /// Every value of [tag], or an empty list if it is absent or empty.
+  List<T> attributes<T extends Object>(Many<T> tag) =>
+      readAttribute(tag, () => getAll(tag));
+}
+
+/// What [read] returns, with a value core can't read turned into an
+/// [InvalidPixelModule] naming [tag]: for reads [AttributeReads] doesn't
+/// cover.
+T readAttribute<T>(Tag tag, T Function() read) {
+  try {
+    return read();
+  } on DicomDataException {
+    throw InvalidPixelModule(tag, 'cannot be read as its VR');
+  }
+}
+
 /// `(0028,0010) Rows`: the number and the keyword, never a value.
 String _describe(Tag tag) {
   String hex(int n) => n.toRadixString(16).padLeft(4, '0').toUpperCase();

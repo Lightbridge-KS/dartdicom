@@ -7,7 +7,8 @@
 library;
 
 export 'src/display/display_buffer.dart';
-export 'src/errors.dart';
+export 'src/errors.dart'
+    show InvalidPixelModule, PixelDataException, UnsupportedPixelEncoding;
 export 'src/lut/voi.dart' show Voi, VoiFunction, VoiLut, VoiWindow;
 export 'src/pixel_array/pixel_array.dart';
 export 'src/pixel_array/pixel_module.dart';

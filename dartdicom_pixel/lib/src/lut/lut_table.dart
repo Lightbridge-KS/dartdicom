@@ -17,12 +17,7 @@ final class LutTable {
   /// numbers. Throws an [InvalidPixelModule] for a descriptor without three
   /// values, bits per entry outside 8–16, or fewer entries than it declares.
   factory LutTable.of(Dataset item, {required bool littleEndian}) {
-    final List<int> descriptor;
-    try {
-      descriptor = item.getAll(DicomTags.lutDescriptor);
-    } on DicomDataException {
-      throw InvalidPixelModule(DicomTags.lutDescriptor, 'cannot be read');
-    }
+    final descriptor = item.attributes(DicomTags.lutDescriptor);
     if (descriptor.length != 3) {
       throw InvalidPixelModule(DicomTags.lutDescriptor, 'must hold 3 values');
     }
@@ -67,7 +62,7 @@ List<int> _data(Dataset item, bool littleEndian) {
   if (element == null) {
     throw InvalidPixelModule(DicomTags.lutData, 'is required in a LUT item');
   }
-  try {
+  return readAttribute(DicomTags.lutData, () {
     if (element.vr == Vr.US) return item.getInts(DicomTags.lutData);
     final bytes = item.getBytes(DicomTags.lutData) ?? Uint8List(0);
     final words = ByteData.sublistView(bytes);
@@ -75,7 +70,5 @@ List<int> _data(Dataset item, bool littleEndian) {
     return [
       for (var i = 0; i + 1 < bytes.length; i += 2) words.getUint16(i, endian),
     ];
-  } on DicomDataException {
-    throw InvalidPixelModule(DicomTags.lutData, 'cannot be read');
-  }
+  });
 }

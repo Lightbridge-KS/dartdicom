@@ -16,13 +16,7 @@ sealed class ModalityLut {
   factory ModalityLut.of(Dataset ds, int frame) {
     final source =
         frameSource(ds, frame, DicomTags.pixelValueTransformationSequence);
-    final Sequence? table;
-    try {
-      table = source.get(DicomTags.modalityLutSequence);
-    } on DicomDataException {
-      throw InvalidPixelModule(
-          DicomTags.modalityLutSequence, 'cannot be read as a sequence');
-    }
+    final table = source.attribute(DicomTags.modalityLutSequence);
     if (table != null && table.isNotEmpty) {
       final ts = ds.transferSyntax;
       final littleEndian =
@@ -64,12 +58,7 @@ final class ModalityLutTable extends ModalityLut {
 }
 
 double? _finite(Dataset ds, One<double> tag) {
-  final double? value;
-  try {
-    value = ds.get(tag);
-  } on DicomDataException {
-    throw InvalidPixelModule(tag, 'cannot be read as its VR');
-  }
+  final value = ds.attribute(tag);
   if (value != null && !value.isFinite) {
     throw InvalidPixelModule(tag, 'must be a finite number');
   }

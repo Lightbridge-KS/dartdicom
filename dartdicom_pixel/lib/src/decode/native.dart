@@ -78,19 +78,12 @@ PixelArray decodeNative(Dataset ds, PixelModule m, int first, int count) {
 }
 
 /// The Pixel Data bytes; an [InvalidPixelModule] if there are none.
-Uint8List _pixelData(Dataset ds) {
-  final Uint8List? bytes;
-  try {
-    bytes = ds.get(DicomTags.pixelData);
-  } on DicomDataException {
-    throw InvalidPixelModule(DicomTags.pixelData, 'cannot be read');
-  }
-  return bytes ??
-      (throw InvalidPixelModule(
-          DicomTags.pixelData,
-          'is absent; a dataset read with stopBeforePixels has none, so '
-          'read the file again without it'));
-}
+Uint8List _pixelData(Dataset ds) =>
+    ds.attribute(DicomTags.pixelData) ??
+    (throw InvalidPixelModule(
+        DicomTags.pixelData,
+        'is absent; a dataset read with stopBeforePixels has none, so '
+        'read the file again without it'));
 
 /// [count] 1-bit pixels from bit [start]: least significant bit first
 /// (PS3.5 §8.2), one byte each, with the bytes of each 16-bit word swapped
