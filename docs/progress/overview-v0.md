@@ -221,7 +221,7 @@ Planned 2026-10-18 (X-01–X-04, X-07). Decisions:
 Each step ends with the dry and floor gates green; `just live` runs after step 6.
 
 - [x] **0. Docs** (`bcd4f90`). The decisions above; PRD X-04; surface S11, S12 and §5; blueprint F44–F47, the pixel ranks (I-32), I-33, I-9 and I-30 amended.
-- [ ] **1. Errors, a strict module, M1's fixes.**
+- [x] **1. Errors, a strict module, M1's fixes** (`cd5b297`).
   - `PixelDataException`, with messages free of values.
   - `PixelModule` checked as pydicom checks it.
   - Fixes: the width-1 window threshold, the 8-bit OW Big Endian pair swap measured from the value's start, PALETTE COLOR refused for display, rescale only when both slope and intercept are present, DS values that must be finite.

@@ -27,6 +27,23 @@ freely redistributable; none holds real patient data.
 | `synthetic/sequences_undefined_length.dcm` | synthetic | Nested sequences and items with undefined length. | `ae0abe889db385cc…` |
 | `synthetic/private_tags.dcm` | synthetic | A private creator (0009,0010) and two private elements. | `332854acf024fc16…` |
 | `synthetic/phi_canary.dcm` | synthetic | Sentinel text (ZXQV…) in names, IDs, descriptions, a private element and nested sequence text, for the I-9 canary test. | `4f7187068cf1a8c3…` |
+| `synthetic/seg_1bit_aligned.dcm` | synthetic | 1-bit, 3 frames of 8×8: every frame starts on a byte boundary. | `5a54d631e85dd9d8…` |
+| `synthetic/seg_1bit_unaligned.dcm` | synthetic | 1-bit, 3 frames of 3×5: frames start at bits 0, 15 and 30, inside a byte. | `6660c28a6ed30dba…` |
+| `synthetic/int32_signed.dcm` | synthetic | Signed 32-bit, Bits Stored 32, 2 frames of 4×4, from -2**31 to 2**31 - 1. | `d2cc95f3cffd8424…` |
+| `synthetic/int32_bs24_dirty.dcm` | synthetic | Signed 32-bit with Bits Stored 24 and garbage in the top byte. | `9aa48e1b3605b5f5…` |
+| `synthetic/uint32_explicit_be.dcm` | synthetic | Unsigned 32-bit OW, Explicit VR Big Endian (retired): each word's four bytes differ. | `b82d5abf977093be…` |
+| `synthetic/rgb_planar_2frame.dcm` | synthetic | RGB, PlanarConfiguration 1, 2 frames of 3×3: each frame holds its own three planes, and frame 1 starts on an odd byte. | `d4290c3d9168b91c…` |
+| `synthetic/rgb8_ow_explicit_be_2frame.dcm` | synthetic | 8-bit RGB in OW, Explicit VR Big Endian, 2 frames of 3×3: bytes come in swapped pairs counted from the value's start, so frame 1 starts inside a word. | `07ab227566965813…` |
+| `synthetic/mono8_signed_bs6_dirty.dcm` | synthetic | Signed 8-bit with Bits Stored 6 and garbage in the top two bits. | `8e9f66548a0e6dc9…` |
+| `synthetic/ct_bs12_signed_dirty.dcm` | synthetic | Signed 16-bit CT with Bits Stored 12, garbage in the top four bits, and one window. | `6361e3c1b1918bc5…` |
+| `synthetic/ct_voi_lut_ow.dcm` | synthetic | CT with a VOI LUT Sequence (4096 16-bit OW entries, first mapped -2048) beside its windows. | `3e199b7ecb5c77ca…` |
+| `synthetic/ct_voi_lut_ow_be.dcm` | synthetic | As ct_voi_lut_ow, in Explicit VR Big Endian: the OW LUT Data too. | `e9cb220af9813168…` |
+| `synthetic/mr_voi_lut_8bit.dcm` | synthetic | MR, 12-bit unsigned, with a VOI LUT of 256 8-bit entries (one per US value) and no window. | `3e9b334a2829269a…` |
+| `synthetic/ct_sigmoid.dcm` | synthetic | CT with VOI LUT Function SIGMOID and two windows. | `fec4e80a2e9eed0a…` |
+| `synthetic/ct_linear_exact.dcm` | synthetic | CT with VOI LUT Function LINEAR_EXACT; the second window is 0.5 wide, which only LINEAR_EXACT allows. | `86e8d484d2a1b5d8…` |
+| `synthetic/mlut_ss_window.dcm` | synthetic | Signed 12-bit with a Modality LUT Sequence (SS descriptor, first mapped -2048, 16-bit US entries) and a window over its output. | `428761bf1f01ab09…` |
+| `synthetic/mlut_8bit.dcm` | synthetic | 8-bit unsigned with an 8-bit Modality LUT (inverting) and a window. | `582250951b3b6515…` |
+| `synthetic/ect_functional_groups.dcm` | synthetic | Enhanced CT, 3 frames of 8×8: rescale and window only in functional groups, shared by frames 0 and 1; frame 2 overrides both (SIGMOID). | `b204f6f8f7e1973f…` |
 | `pydicom/CT_small.dcm` | pydicom 3.0.2 test data | Explicit VR LE, ISO_IR 100, private tags | `3dd31e5cc835b3f2…` |
 | `pydicom/MR_small.dcm` | pydicom 3.0.2 test data | Explicit VR LE | `3f27d1c22f1a66e8…` |
 | `pydicom/MR_small_implicit.dcm` | pydicom 3.0.2 test data | Implicit VR LE | `6077442c42a56fc7…` |

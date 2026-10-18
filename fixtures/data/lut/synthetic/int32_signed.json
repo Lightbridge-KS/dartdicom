@@ -1,0 +1,13 @@
+{
+ "file": "synthetic/int32_signed.dcm",
+ "frames": [
+  {
+   "modality": "98332ca01d7c4cefd234c2c80e45426d3abce76f732452298edf583f4b8a0ec7",
+   "voi": []
+  },
+  {
+   "modality": "85d53949884514800021ffcc6f2be9bbad971e16a81330b779bde955a67b8d22",
+   "voi": []
+  }
+ ]
+}

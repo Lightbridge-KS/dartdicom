@@ -1,0 +1,65 @@
+{
+ "file": "pydicom/rtdose.dcm",
+ "frames": [
+  {
+   "modality": "806b9f770b009904ef95f862edad58086f617412d9a410249a80252a7b845ae6",
+   "voi": []
+  },
+  {
+   "modality": "2177307aafc027058e4f0ea5a63331d569cefcc04949ecbcfc4957f826106696",
+   "voi": []
+  },
+  {
+   "modality": "f9abc8d0a4f192aed0fbcc16329ef9615eaeae39638a3d13d340d1e96bbeed1b",
+   "voi": []
+  },
+  {
+   "modality": "9bd77cda18def98714e0b0d0a554c948c0ec2e8a9df0da0cf85bb0579fe34510",
+   "voi": []
+  },
+  {
+   "modality": "fc69b83472cbce2a2d08c272ffaa430836281d1e80ac7b2798a8236fcb1a2683",
+   "voi": []
+  },
+  {
+   "modality": "5a67534ef50323afb679223e42f1bb2c62c3fcdce630ed03b76c719fe0ec55dc",
+   "voi": []
+  },
+  {
+   "modality": "63fe2f0086c40bd9e6eab38b9db092b407f2452fc4773f8ff8bf342207a4a7fc",
+   "voi": []
+  },
+  {
+   "modality": "8b00c5fd2cf724ff2b771b790c6e14cbbf96fe4e1a167e4481e2a444e131a5e1",
+   "voi": []
+  },
+  {
+   "modality": "84b68505ef49e59fa2f1852ebba897377d5919d69f4f3987e155e1bf5644db6e",
+   "voi": []
+  },
+  {
+   "modality": "1041505471ce988724971088e0675ad754ee807439d7b9553236098ea80febf2",
+   "voi": []
+  },
+  {
+   "modality": "54503234bf16f68efe900d2e5ab4aad1548d7a64c3ba07a84783ff4367e53d99",
+   "voi": []
+  },
+  {
+   "modality": "52c87703f7fc7da11e84e06888b7af6d5aafdb4d985438882abbbe5673c2661d",
+   "voi": []
+  },
+  {
+   "modality": "fa221714a631ff450d9efac4d14a04ec364a0576df3ba191b4295bfeb055cb18",
+   "voi": []
+  },
+  {
+   "modality": "2397783922bd0d94e8555187318a72c938814517b034bc99c789da44455a801b",
+   "voi": []
+  },
+  {
+   "modality": "4e237ae3bdb04e3ba632f1a3ac9bb0aaadc77373b099abf09236b0719d2051ff",
+   "voi": []
+  }
+ ]
+}

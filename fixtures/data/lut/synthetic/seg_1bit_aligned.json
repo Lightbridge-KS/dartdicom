@@ -1,0 +1,17 @@
+{
+ "file": "synthetic/seg_1bit_aligned.dcm",
+ "frames": [
+  {
+   "modality": "82c3d6cf07ce314023812c792d557aed830350f69bd3d8ce89befc4f00964356",
+   "voi": []
+  },
+  {
+   "modality": "814eb531b1ce84e2a7b2a796f322780b57d9122cf897fdc7d631ce4572b8a5dd",
+   "voi": []
+  },
+  {
+   "modality": "2da900d7aafe7588a8be1360cfc28c972803cbe910a5b7354fb130f66dc72a1c",
+   "voi": []
+  }
+ ]
+}

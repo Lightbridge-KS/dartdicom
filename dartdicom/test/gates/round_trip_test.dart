@@ -5,6 +5,8 @@
 @TestOn('vm')
 library;
 
+import 'dart:typed_data';
+
 import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom/io.dart';
 import 'package:dartdicom/src/write/writer.dart' show swapWords;
@@ -46,9 +48,11 @@ void main() {
                 transferSyntax: TransferSyntaxes.explicitVrLittleEndian)));
         expect(
             le.meta.transferSyntaxUid, TransferSyntaxes.explicitVrLittleEndian);
-        // Everything decodes the same; OW Pixel Data words swap (I-18).
+        // Everything decodes the same; word data swaps (I-18): OW Pixel
+        // Data by its Bits Allocated, other binary words (OW LUT Data in a
+        // sequence item, say) by their size.
         expect(flatten(le.dataset, skip: {DicomTags.pixelData}),
-            flatten(file.dataset, skip: {DicomTags.pixelData}));
+            _otherOrder(flatten(file.dataset, skip: {DicomTags.pixelData})));
         final be = file.dataset.require(DicomTags.pixelData);
         final int bitsAllocated = file.dataset.require(DicomTags.bitsAllocated);
         expect(le.dataset.require(DicomTags.pixelData),
@@ -75,4 +79,19 @@ void main() {
       expect(checkF41(again, bytes, deflateCodec: _zlib), isNull);
     });
   }
+}
+
+const _wordSizes = {'OW': 2, 'OF': 4, 'OL': 4, 'OD': 8, 'OV': 8};
+
+/// [node], from `flatten`, with its binary word values in the other byte
+/// order, as the writer swaps them.
+Object _otherOrder(Object node) {
+  if (node case [final int tag, final String vr, final Uint8List value]
+      when _wordSizes.containsKey(vr)) {
+    return [tag, vr, swapWords(value, _wordSizes[vr]!)];
+  }
+  if (node is List && node is! TypedData) {
+    return [for (final child in node) _otherOrder(child as Object)];
+  }
+  return node;
 }

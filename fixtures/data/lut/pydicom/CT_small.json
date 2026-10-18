@@ -1,0 +1,9 @@
+{
+ "file": "pydicom/CT_small.dcm",
+ "frames": [
+  {
+   "modality": "ca969f2f193f5325ebbb4e75ed69a9968253f41a43f2498eefb612bb237ffb48",
+   "voi": []
+  }
+ ]
+}

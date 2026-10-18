@@ -1,0 +1,25 @@
+{
+ "file": "synthetic/ct_voi_lut_ow.dcm",
+ "frames": [
+  {
+   "modality": "da1a813b1282e477e0ece40a9708cfc206d2968aaa83fb893347306122bb6f02",
+   "voi": [
+    {
+     "kind": "lut",
+     "index": 0,
+     "gray": "gYGCgoODhISFhYaGh4eIiIiJiYqKi4uMjI2NjY6Oj4+QkJGRkZKSk5OTlJSVlZaWlpeXmJiYmZmampqbm5ycnJ2dnp6en5+goKChoaKioqOjo6SkpaWlpqanp6eoqKipqamqqqurq6ysrK2tra6ur6+vsLCwsbGxsrKys7OztLS1tbW2tra3t7e4uLi5ubm6urq7u7u8vLy9vb2+vr6/v7/AwMDBwcHCwsLCw8PDxMTExcXFxsbGx8fHyMjIyMnJycrKysvLy8zMzMzNzc3Ozs7Pz8/P0NDQ0dHR0tLS0tPT09TU1NXV1dXW1tbX19fX2NjY2dnZ2dra2tvb29vc3A=="
+    },
+    {
+     "kind": "window",
+     "index": 0,
+     "gray": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAoPFBgdIygtMjY7QUZLUFVZX2RpbnN4fYKHjJGWm6Clqq+0ub7DyM3S19zh5uvw9fr//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////w=="
+    },
+    {
+     "kind": "window",
+     "index": 1,
+     "gray": "PD0+QEFCREVGSElKTE1OUFFSVFVWWFlaXF1eYGFiZGVmaGlqbG1ucHFydHV2eHl6fH1+gIGChIWGiImKjI2OkJGSlJWWmJmanJ2eoKGipKWmqKmqrK2usLGytLW2uLm6vL2+wMHCxMXGyMnKzM3O0NHS1NXW2Nna3N3e4OHi5OXm6Onq7O3u8PHy9PX2+Pn6/P3+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////w=="
+    }
+   ]
+  }
+ ]
+}

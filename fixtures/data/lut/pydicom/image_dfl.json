@@ -1,0 +1,9 @@
+{
+ "file": "pydicom/image_dfl.dcm",
+ "frames": [
+  {
+   "modality": "4b3989b8545f28dfaa64c94789b06710a8574af593a8a4caf87fb2bf2a13ab2d",
+   "voi": []
+  }
+ ]
+}

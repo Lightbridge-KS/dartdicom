@@ -1,0 +1,35 @@
+{
+ "file": "synthetic/ect_functional_groups.dcm",
+ "frames": [
+  {
+   "modality": "8c47011969f4debf6d1b4c4770c93beb9a0086b7a13c17014f765632155dadd5",
+   "voi": [
+    {
+     "kind": "window",
+     "index": 0,
+     "gray": "AP8B//8A/07//wD/nv//AP/w//8A/////wD/////AP//AP8f//8A/33//wD/3P//AP////8A/////wD//wD/PQ=="
+    }
+   ]
+  },
+  {
+   "modality": "c7d1767dddbe0164bac77c9748d1bef21af6dac2e4e5bb31814f67da1542af43",
+   "voi": [
+    {
+     "kind": "window",
+     "index": 0,
+     "gray": "//8A/6j//wD/////AP////8A//8A/zL//wD/qf//AP////8A/////wD//wD/W///AP/c//8A/////wD//wD/LQ=="
+    }
+   ]
+  },
+  {
+   "modality": "c5d2843f35b58e0edbf19db027285bd7512bb9c1dd31bfc85492bc5d5d508d0b",
+   "voi": [
+    {
+     "kind": "window",
+     "index": 0,
+     "gray": "//4S/+f//zP/9///c//9Bf+7//4R/+b//zP/9///eP/9Bv/C//4V/+v//z//+f//jv/+Cf/U//8f//L//1z//A=="
+    }
+   ]
+  }
+ ]
+}

@@ -10,8 +10,8 @@ from typing import Annotated
 
 import typer
 
-from . import corpus, curated, golden, net_vectors, pydicom_dictionary, scenarios
-from .paths import DATA, GOLDEN, NET, PROVENANCE, PYDICOM, SYNTHETIC, cache_root
+from . import corpus, curated, golden, lut, net_vectors, pydicom_dictionary, scenarios
+from .paths import DATA, GOLDEN, LUT, NET, PROVENANCE, PYDICOM, SYNTHETIC, cache_root
 from .provenance import Row, render
 
 app = typer.Typer(
@@ -49,14 +49,19 @@ def build_into(data_root: Path) -> list[Row]:
 
 
 def golden_into(data_root: Path) -> int:
-    """Writes golden JSON for every fixture under `data_root`."""
+    """Writes golden JSON for every fixture under `data_root`, and the LUT
+    goldens of the grayscale native ones (F47)."""
     sources = sorted(
         p for group in (SYNTHETIC, PYDICOM) for p in (data_root / group).glob("*.dcm")
     )
     for src in sources:
-        target = data_root / GOLDEN / src.relative_to(data_root).with_suffix(".json")
+        relative = src.relative_to(data_root).with_suffix(".json")
+        target = data_root / GOLDEN / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(golden.golden(src, data_root))
+        if (text := lut.golden(src, data_root, strict=True)) is not None:
+            (data_root / LUT / relative).parent.mkdir(parents=True, exist_ok=True)
+            (data_root / LUT / relative).write_text(text)
     return len(sources)
 
 
@@ -78,12 +83,25 @@ def corpus_golden_into(name: str) -> int:
         "corpus": f"{name}@{corpus.CORPORA[name].commit[:7]}",
         "golden_py": golden.source_hash(),
     }
-    target_root = cache_root() / GOLDEN / name
+    lut_stamps = {"corpus": stamps["corpus"], **lut.stamp()}
     sources = sorted(p for p in root.rglob("*.dcm") if ".git" not in p.parts)
     for src in sources:
-        target = target_root / src.relative_to(root).with_suffix(".json")
+        relative = src.relative_to(root).with_suffix(".json")
+        target = cache_root() / GOLDEN / name / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(golden.golden_or_error(src, root, **stamps))
+        lut_target = cache_root() / LUT / name / relative
+        try:
+            text = lut.golden(src, root, strict=False, **lut_stamps)
+        except Exception as exc:  # unreadable: core's golden records why
+            text = json.dumps(
+                {"file": relative.as_posix(), "error": type(exc).__name__}
+            )
+        if text is not None:
+            lut_target.parent.mkdir(parents=True, exist_ok=True)
+            lut_target.write_text(text)
+        elif lut_target.exists():
+            lut_target.unlink()
     return len(sources)
 
 

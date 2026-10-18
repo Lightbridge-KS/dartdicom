@@ -1,0 +1,20 @@
+{
+ "file": "synthetic/ct_sigmoid.dcm",
+ "frames": [
+  {
+   "modality": "da1a813b1282e477e0ece40a9708cfc206d2968aaa83fb893347306122bb6f02",
+   "voi": [
+    {
+     "kind": "window",
+     "index": 0,
+     "gray": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQEBAQEBAQEBAQEBAQECAgICAgIDAwMDAwQEBAUFBgYGBwcICQkKCwwNDg8QERIUFRcZGhweICMlKCotMDM3Oj1BRUlNUlZaX2RpbnN3fIGHjJGWmp+jqK2xtbm9wcTIy87R1Nfa3N7g4uTm6Onr7O7v8PHy8/T19fb39/j4+fn6+vv7+/v8/Pz8/f39/f39/v7+/v7+/v7+/v7+/v7+/////////////////////////////////////////////////////////w=="
+    },
+    {
+     "kind": "window",
+     "index": 1,
+     "gray": "QUJDREVGSElKS0xNTk9RUlNUVVZYWVpbXF5fYGFjZGVmaGlqbG1ucHFyc3V2eHl6e31+gIGChIWGh4mKjI2Oj5GSk5WWl5mam5yen6Cho6Slpqepqqusra6wsbKztLW2t7m6u7y9vr/AwcLDxMXGxsfIycrLzM3Nzs/Q0dLS09TV1dbX19jZ2drb29zd3d7f3+Dg4eHi4uPj5OXl5ubm5+fo6Onp6erq6+vr7Ozt7e3u7u7v7+/w8PDw8fHx8vLy8vPz8/P09PT09PX19fX19vb29vb39/f39/f3+Pj4+Pj4+Pn5+fn5+fn5+vr6+vr6+vr6+vv7+/v7+/v7+/v7+w=="
+    }
+   ]
+  }
+ ]
+}

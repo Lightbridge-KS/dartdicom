@@ -1,0 +1,9 @@
+{
+ "file": "synthetic/mono8_signed_bs6_dirty.dcm",
+ "frames": [
+  {
+   "modality": "b86a87fa67f5ad31c6771f95865328c7da7d5fd02731d57fd007b788cada5956",
+   "voi": []
+  }
+ ]
+}

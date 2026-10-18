@@ -1,0 +1,20 @@
+{
+ "file": "synthetic/ct_linear_exact.dcm",
+ "frames": [
+  {
+   "modality": "da1a813b1282e477e0ece40a9708cfc206d2968aaa83fb893347306122bb6f02",
+   "voi": [
+    {
+     "kind": "window",
+     "index": 0,
+     "gray": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAoPFBgdIigtMjY7QEVLUFVZXmNpbnN3fIGHjJGWmp+kqq+0uL3CyM3S1tvg5uvw9fn+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////w=="
+    },
+    {
+     "kind": "window",
+     "index": 1,
+     "gray": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////w=="
+    }
+   ]
+  }
+ ]
+}

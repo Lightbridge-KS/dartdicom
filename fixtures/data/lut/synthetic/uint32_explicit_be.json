@@ -1,0 +1,9 @@
+{
+ "file": "synthetic/uint32_explicit_be.dcm",
+ "frames": [
+  {
+   "modality": "fbe6c62cf699385428f1e4b7c4e80b67cf80ed4f81f12513b18edc8d71a00f2c",
+   "voi": []
+  }
+ ]
+}

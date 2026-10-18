@@ -1,0 +1,15 @@
+{
+ "file": "synthetic/mr_voi_lut_8bit.dcm",
+ "frames": [
+  {
+   "modality": "c55d969e97841af8aa6301e84985a3d6f2bb7a98b5ce6e4f1fee2eff3c7d78d3",
+   "voi": [
+    {
+     "kind": "lut",
+     "index": 0,
+     "gray": "AAAAAAAAAAAAAAAAAQEBAQEBAQECAgICAgICAwMDAwQEBAQFBQUFBgYGBwcHCAgICQkJCgoLCwsMDA0NDg4PDxAQERESEhMTFBQVFRYWFxcYGBkaGhscHB0eHh8gICEiIyMkJSYmJygpKiorLC0uLy8wMTIzNDU2Nzg4OTo7PD09Pj9AQUJDREVGR0lKS0xNTk9QUVJUVVZXWFlbXF1eX2FiY2RmZ2hpa2xtb3Bxc3R1d3h4eXt8fn+AgoOFhoiJi4yOj5GSlJWXmJqbnZ6goqOlpqiqq62vsLK0tbe5ury+wMHDxcfHyMrMzs/R09XX2drc3uDi5Obo6evt7/Hz9Q=="
+    }
+   ]
+  }
+ ]
+}

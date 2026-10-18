@@ -1,0 +1,17 @@
+{
+ "file": "synthetic/sc_multiframe.dcm",
+ "frames": [
+  {
+   "modality": "33344a9a36b07fd9251abb3744fd2db837a160b17dd8e1baa5b2c30e2d387ddf",
+   "voi": []
+  },
+  {
+   "modality": "53e465b1912df113b7e3408ce071be49ff35ab078037949a5d75ebd28d17c93c",
+   "voi": []
+  },
+  {
+   "modality": "e775405aa9fd5ad1f1a7a946fddbeb2d69e7abdf95af088e2234e9c790347dd5",
+   "voi": []
+  }
+ ]
+}

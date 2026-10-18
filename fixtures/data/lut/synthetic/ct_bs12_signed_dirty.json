@@ -1,0 +1,15 @@
+{
+ "file": "synthetic/ct_bs12_signed_dirty.dcm",
+ "frames": [
+  {
+   "modality": "f7238d016a774a40ce2694903d8baf2b8d40623ccb1526ec3aba59d9ca04875a",
+   "voi": [
+    {
+     "kind": "window",
+     "index": 0,
+     "gray": "AJo20GwHoj3YdA+qReB7Fw=="
+    }
+   ]
+  }
+ ]
+}

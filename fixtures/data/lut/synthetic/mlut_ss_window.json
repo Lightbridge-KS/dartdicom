@@ -1,0 +1,15 @@
+{
+ "file": "synthetic/mlut_ss_window.dcm",
+ "frames": [
+  {
+   "modality": "e652810d1343806df890375f6dc3aff97589c21d24deb5a7544ef542c44ad4b9",
+   "voi": [
+    {
+     "kind": "window",
+     "index": 0,
+     "gray": "ABAXHCAkJyotMDM1Nzo8PkBCREZHSUtNTlBRU1VWV1laXF1eYGFiZGVmZ2lqa2xtb3BxcnN0dXZ3eXp7fH1+f4CBgoOEhYaHh4iJiouMjY6PkJGRkpOUlZaXl5iZmpucnJ2en6CgoaKjpKSlpqenqKmqq6usra2ur7CwsbKzs7S1tba3t7i5urq7vLy9vr6/wMDBwsLDxMTFxsbHx8jJycrLy8zNzc7Oz9DQ0dHS09PU1NXW1tfX2NnZ2trb3Nzd3d7e3+Dg4eHi4uPk5OXl5ubn5+jo6erq6+vs7O3t7u7v8PDx8fLy8/P09PX19vb39/j4+fn6+vv7/Pz9/v7//w=="
+    }
+   ]
+  }
+ ]
+}
