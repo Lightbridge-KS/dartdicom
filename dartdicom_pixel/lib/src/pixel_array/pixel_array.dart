@@ -179,7 +179,7 @@ final class PixelArray {
         modality: _modality.single,
         voi: own ?? autoWindow(),
         invert: module.photometricInterpretation == 'MONOCHROME1',
-        bitsStored: module.bitsAllocated == 1 ? 1 : module.bitsStored,
+        bitsStored: module.bitsStored,
         signed: dtype.signed);
     return DisplayBuffer(columns, rows, gray);
   }

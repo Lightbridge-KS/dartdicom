@@ -34,11 +34,9 @@ PixelArray decodeNative(Dataset ds, PixelModule m, int first, int count) {
         'request an uncompressed transfer syntax',
         transferSyntax: ds.transferSyntax);
   }
-  if (!const {1, 8, 16, 32}.contains(m.bitsAllocated)) {
-    throw UnsupportedPixelEncoding(
-        'is not one this version decodes (1, 8, 16 or 32)',
-        tag: DicomTags.bitsAllocated);
-  }
+  // A Bits Allocated with no dtype (other than 1, 8, 16 or 32) is refused
+  // here, before Pixel Data is read.
+  PixelDtype.of(m);
   if (m.photometricInterpretation == 'YBR_FULL_422') {
     throw UnsupportedPixelEncoding(
         'YBR_FULL_422 needs chroma upsampling, which is color support (X-08)',

@@ -13,10 +13,11 @@ final class LutTable {
       : entries = Uint16List.fromList(entries).asUnmodifiableView();
 
   /// Reads [item]'s LUT Descriptor and LUT Data. OW LUT Data is in 16-bit
-  /// words of the dataset's byte order, [littleEndian]; US data is already
-  /// numbers. Throws an [InvalidPixelModule] for a descriptor without three
-  /// values, bits per entry outside 8–16, or fewer entries than it declares.
-  factory LutTable.of(Dataset item, {required bool littleEndian}) {
+  /// words of the byte order of [from], the dataset the item belongs to;
+  /// US data is already numbers. Throws an [InvalidPixelModule] for a
+  /// descriptor without three values, bits per entry outside 8–16, or
+  /// fewer entries than it declares.
+  factory LutTable.of(Dataset item, {required Dataset from}) {
     final descriptor = item.attributes(DicomTags.lutDescriptor);
     if (descriptor.length != 3) {
       throw InvalidPixelModule(DicomTags.lutDescriptor, 'must hold 3 values');
@@ -24,17 +25,21 @@ final class LutTable {
     // An entry count of 0 means 65536 (PS3.3 C.11.1.1.1).
     final count = descriptor[0] == 0 ? 65536 : descriptor[0];
     final bits = descriptor[2];
-    if (bits < 8 || bits > 16) {
+    if (bitsProblem(bits) case final problem?) {
       throw InvalidPixelModule(
-          DicomTags.lutDescriptor, 'bits per entry must be 8–16');
+          DicomTags.lutDescriptor, 'bits per entry $problem');
     }
-    final data = _data(item, littleEndian);
+    final data = _data(item, _littleEndian(from));
     if (data.length < count) {
       throw InvalidPixelModule(DicomTags.lutData,
           'holds fewer entries than (0028,3002) LUTDescriptor declares');
     }
     return LutTable(descriptor[1], bits, data.sublist(0, count));
   }
+
+  /// Why [bits] can't be a LUT's bits per entry, or `null` if it can.
+  static String? bitsProblem(int bits) =>
+      bits < 8 || bits > 16 ? 'must be 8–16' : null;
 
   /// The stored or modality value that maps to the first entry.
   final int firstMapped;
@@ -55,6 +60,13 @@ final class LutTable {
     if (index >= entries.length) return entries.last;
     return entries[index];
   }
+}
+
+/// Whether [ds]'s binary words are Little Endian: its transfer syntax's byte
+/// order, or Little Endian when it names none or one core doesn't know.
+bool _littleEndian(Dataset ds) {
+  final ts = ds.transferSyntax;
+  return ts == null || (TransferSyntax.of(ts)?.littleEndian ?? true);
 }
 
 List<int> _data(Dataset item, bool littleEndian) {

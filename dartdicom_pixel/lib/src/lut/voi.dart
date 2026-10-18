@@ -110,8 +110,8 @@ final class VoiLut extends Voi {
   }
 
   static LutTable _checked(int first, int bits, List<int> entries) {
-    if (bits < 8 || bits > 16) {
-      throw ArgumentError.value(bits, 'bitsPerEntry', 'must be 8–16');
+    if (LutTable.bitsProblem(bits) case final problem?) {
+      throw ArgumentError.value(bits, 'bitsPerEntry', problem);
     }
     if (entries.isEmpty) {
       throw ArgumentError.value(entries, 'entries', 'must not be empty');
@@ -148,10 +148,7 @@ Voi? datasetVoi(Dataset ds,
 
   if (hasLut && (preferLut || !hasWindow)) {
     RangeError.checkValidIndex(index, luts, 'index');
-    final ts = ds.transferSyntax;
-    final littleEndian =
-        ts == null || (TransferSyntax.of(ts)?.littleEndian ?? true);
-    return VoiLut._(LutTable.of(luts[index], littleEndian: littleEndian));
+    return VoiLut._(LutTable.of(luts[index], from: ds));
   }
   if (!hasWindow) return null;
   double pick(List<double> values) {

@@ -18,11 +18,7 @@ sealed class ModalityLut {
         frameSource(ds, frame, DicomTags.pixelValueTransformationSequence);
     final table = source.attribute(DicomTags.modalityLutSequence);
     if (table != null && table.isNotEmpty) {
-      final ts = ds.transferSyntax;
-      final littleEndian =
-          ts == null || (TransferSyntax.of(ts)?.littleEndian ?? true);
-      return ModalityLutTable(
-          LutTable.of(table.first, littleEndian: littleEndian));
+      return ModalityLutTable(LutTable.of(table.first, from: ds));
     }
     final slope = _finite(source, DicomTags.rescaleSlope);
     final intercept = _finite(source, DicomTags.rescaleIntercept);
