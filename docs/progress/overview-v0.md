@@ -256,6 +256,14 @@ Each step ends with the dry and floor gates green; `just live` runs after step 6
 
 ### M5 0.1.0 and the first consumer
 
+- [x] **Pre-release from GitHub, before pub.dev:**
+  - Annotated tag `v0.1.0-dev.1`, one tag for the whole repository: it equals every pubspec version (I-16), and it can't match the per-package pub.dev tags (`dartdicom-v{{version}}`, blueprint §9), so it never triggers a publish.
+  - The first consumer pins it as `ref:` in each git dependency (README, *Use from GitHub*). Each later pre-release bumps every pubspec and CHANGELOG to `0.1.0-dev.N` and gets tag `v0.1.0-dev.N`.
+  - **Verified on the tagged code (2026-10-18):**
+    - the dry, floor and live gates, and CI's `ci` and `corpus`;
+    - a Flutter 3.32 desktop app depending on the repository from GitHub resolves (with the `dartdicom` override), reads and displays a CT frame as a `ui.Image`, and runs a C-ECHO into a `StorageScp`;
+    - it builds for macOS in debug and in release (AOT).
+  - **For the consumer:** a sandboxed macOS release build needs the `com.apple.security.network.client` entitlement, and `network.server` for the StorageScp. Flutter's template gives the release profile neither.
 - [ ] Publish `dartdicom`, `dartdicom_pixel` and `dartdicom_net` as `0.1.0-dev.N`, then `0.1.0`, core first
 - [ ] The first consumer integrates on each desktop OS it ships on
 - [ ] Written files pass `dciodvfy` (dicom3tools) where it applies (moved from M2, 2026-10-17)
