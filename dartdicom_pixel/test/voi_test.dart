@@ -67,6 +67,8 @@ void main() {
     test('takes 8–16 bits and at least one entry', () {
       expect(() => VoiLut(firstMapped: 0, bitsPerEntry: 7, entries: [1]),
           throwsArgumentError);
+      expect(() => VoiLut(firstMapped: 0, bitsPerEntry: 17, entries: [1]),
+          throwsArgumentError);
       expect(() => VoiLut(firstMapped: 0, bitsPerEntry: 8, entries: const []),
           throwsArgumentError);
     });

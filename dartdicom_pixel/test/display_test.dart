@@ -63,6 +63,17 @@ void main() {
     expect(frame.toDisplay(frame.autoWindow()).gray, frame.toDisplay().gray);
   });
 
+  test('a 1-bit frame displays its two values as black and white', () {
+    // MONOCHROME2, 1 × 4: bits 0, 1, 1, 0, least significant bit first.
+    final ds = parsed([
+      ...pixelModule(rows: 1, columns: 4, bitsAllocated: 1),
+      (pixelDataTag, 'OB', [0x06, 0]),
+    ]);
+    final frame = ds.pixels.frame(0);
+    expect(frame.toDisplay().gray, [0, 255, 255, 0]);
+    expect(frame.toDisplay(VoiWindow(0.5, 1)).gray, [0, 255, 255, 0]);
+  });
+
   test('toRgba repeats gray into opaque RGBA', () {
     final buf = DisplayBuffer(2, 1, Uint8List.fromList([10, 200]));
     expect(buf.toRgba(), [10, 10, 10, 255, 200, 200, 200, 255]);

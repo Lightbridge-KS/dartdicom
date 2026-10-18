@@ -100,6 +100,7 @@ void main() {
         (_lutItem([4, 0, 16], [1, 2]), DicomTags.lutData),
         (_lutItem([4, 0], [1, 2, 3, 4]), DicomTags.lutDescriptor),
         (_lutItem([4, 0, 7], [1, 2, 3, 4]), DicomTags.lutDescriptor),
+        (_lutItem([4, 0, 17], [1, 2, 3, 4]), DicomTags.lutDescriptor),
         (
           Dataset()..setRaw(DicomTags.lutDescriptor, Vr.US, [1, 0, 16]),
           DicomTags.lutData
