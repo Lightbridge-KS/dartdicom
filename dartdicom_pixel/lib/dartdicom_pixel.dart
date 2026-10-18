@@ -7,6 +7,7 @@
 library;
 
 export 'src/display/display_buffer.dart';
+export 'src/errors.dart';
 export 'src/lut/voi_window.dart';
 export 'src/pixel_array/pixel_array.dart';
 export 'src/pixel_array/pixel_module.dart';

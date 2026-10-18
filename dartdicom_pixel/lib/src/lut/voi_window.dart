@@ -16,10 +16,11 @@ final class VoiWindow {
   final double width;
 
   /// Maps a modality value [x] to a gray level in `0..255` with the linear
-  /// function of PS3.3 C.11.2.1.2.1. A width of 1 is a threshold.
+  /// function of PS3.3 C.11.2.1.2.1. A width of 1 is a threshold: values up
+  /// to `center - 0.5` are black, as the standard's `x <= c - 0.5` says.
   int apply(double x) {
     final c = center - 0.5;
-    if (width == 1) return x < c ? 0 : 255;
+    if (width == 1) return x <= c ? 0 : 255;
     final half = (width - 1) / 2;
     if (x <= c - half) return 0;
     if (x > c + half) return 255;

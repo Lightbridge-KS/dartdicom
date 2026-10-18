@@ -8,6 +8,7 @@ import 'package:dartdicom_pixel/dartdicom_pixel.dart';
 void main() {
   final hu = Int16List.fromList([-1000, 0, 40, 1000]);
   final ds = Dataset()
+    ..set(DicomTags.samplesPerPixel, 1)
     ..set(DicomTags.rows, 1)
     ..set(DicomTags.columns, hu.length)
     ..set(DicomTags.bitsAllocated, 16)
