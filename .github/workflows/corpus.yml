@@ -1,6 +1,8 @@
 # I-11 and I-10 on the pinned pydicom-data corpus (M2's exit): pydicom's
 # golden reading of every file, then dartdicom's, compared by
 # dartdicom/test/gates/corpus_test.dart (a ratchet over corpusExpectedFailures in test/gates/expected.dart). Then
+# the pixel gate (M4): dartdicom_pixel/test/gates/corpus_test.dart decodes
+# every native file to pydicom's pixel array, a ratchet of its own. Then
 # the written-file gate over the corpus: pydicom and DCMTK read every file
 # dartdicom writes from it.
 name: corpus
@@ -8,9 +10,9 @@ name: corpus
 on:
   push:
     branches: [main]
-    paths: [dartdicom/**, fixtures/**, .github/workflows/corpus.yml]
+    paths: [dartdicom/**, dartdicom_pixel/**, fixtures/**, .github/workflows/corpus.yml]
   pull_request:
-    paths: [dartdicom/**, fixtures/**, .github/workflows/corpus.yml]
+    paths: [dartdicom/**, dartdicom_pixel/**, fixtures/**, .github/workflows/corpus.yml]
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
@@ -42,6 +44,11 @@ jobs:
           uv run --locked fixtures golden --corpus
       - name: compare (a missing corpus fails here)
         working-directory: dartdicom
+        run: dart test test/gates/corpus_test.dart
+        env:
+          DARTDICOM_CORPUS_REQUIRED: "1"
+      - name: pixel gate (native pixels, against pydicom)
+        working-directory: dartdicom_pixel
         run: dart test test/gates/corpus_test.dart
         env:
           DARTDICOM_CORPUS_REQUIRED: "1"

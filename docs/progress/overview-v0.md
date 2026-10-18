@@ -229,7 +229,7 @@ Each step ends with the dry and floor gates green; `just live` runs after step 6
 - [x] **2. Fixtures and LUT goldens** (`0515f80`).
   - Synthetic scenarios for 1-bit (byte-aligned or not), 32-bit, PlanarConfiguration 1, unused bits that hold garbage, both LUT Sequences, SIGMOID, LINEAR_EXACT and functional groups.
   - pydicom's modality and VOI output in `fixtures/data/lut/`, and the corpus's in the cache (F47).
-- [ ] **3. Native decoding (X-01, X-02).** 1-bit and 32-bit (safe on the web), PlanarConfiguration 1, `allFrames()` and frame views; `vs_pydicom_test` without skips.
+- [x] **3. Native decoding (X-01, X-02)** (`b0a9dc6`). 1-bit and 32-bit (safe on the web), PlanarConfiguration 1, `allFrames()` and frame views; `vs_pydicom_test` without skips.
 - [ ] **4. Pixel corpus gate.** A ratchet over the corpus's native pixel sha256; `corpus.yml` runs it.
 - [ ] **5. Modality LUT.** Per-frame attribute resolution, rescale or a table, `toModality()`, bit-exact against pydicom.
 - [ ] **6. VOI and display.** `Voi`, `ds.voi()`, `toDisplay([voi])` folded into one lookup table, `autoWindow()`; within one gray level of the goldens; `voiWindow` callers move.

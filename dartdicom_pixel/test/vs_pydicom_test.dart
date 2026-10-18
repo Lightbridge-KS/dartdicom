@@ -13,31 +13,7 @@ import 'package:dartdicom/dartdicom.dart';
 import 'package:dartdicom_pixel/dartdicom_pixel.dart';
 import 'package:test/test.dart';
 
-/// [values] as little-endian bytes of [dtype], as pydicom's golden hashes
-/// them.
-Uint8List leBytes(List<int> values, PixelDtype dtype) {
-  final data = ByteData(values.length * dtype.bits ~/ 8);
-  for (final (i, v) in values.indexed) {
-    switch (dtype.bits) {
-      case 8:
-        data.setUint8(i, v & 0xFF);
-      case 16:
-        data.setUint16(i * 2, v & 0xFFFF, Endian.little);
-      default:
-        data.setUint32(i * 4, v & 0xFFFFFFFF, Endian.little);
-    }
-  }
-  return data.buffer.asUint8List();
-}
-
-/// pydicom's shape: frames only when there are several, samples only for
-/// color.
-List<int> pydicomShape(PixelShape s) => [
-      if (s.frames > 1) s.frames,
-      s.rows,
-      s.columns,
-      if (s.samples > 1) s.samples,
-    ];
+import 'support/golden.dart';
 
 void main() {
   final goldens = Directory('../fixtures/data/golden')
