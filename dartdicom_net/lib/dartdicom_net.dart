@@ -25,3 +25,6 @@ export 'src/sink/instance_sink.dart';
 export 'src/transport/in_memory_transport.dart';
 export 'src/transport/socket_transport.dart';
 export 'src/transport/transport.dart';
+
+export 'src/trace/observations.dart' hide ObservationRecorder;
+export 'src/transport/cancellation.dart';

@@ -169,6 +169,7 @@ final class UserInformation {
   const UserInformation({
     required this.maxLength,
     required this.implementationClassUid,
+    this.hasMaxLength = true,
     this.implementationVersionName,
     this.roles = const [],
     this.asyncWindow,
@@ -177,6 +178,10 @@ final class UserInformation {
 
   /// The largest P-DATA-TF the sender can receive; 0 means no limit.
   final int maxLength;
+
+  /// Whether Max Length was actually present, independently of the networking
+  /// fallback of zero for peers that omit it.
+  final bool hasMaxLength;
   final String implementationClassUid;
   final String? implementationVersionName;
   final List<RoleSelection> roles;
@@ -188,10 +193,11 @@ final class UserInformation {
 
   // pynetdicom's order: 51, 52, 55, the 54 role items, then 53 (I-12).
   void encode(PduWriter w) => w.item(ItemType.userInformation, (b) {
-        b
-          ..item(ItemType.maxLength, (s) => s.u32(maxLength))
-          ..item(ItemType.implementationClassUid,
-              (s) => s.ascii(implementationClassUid));
+        if (hasMaxLength) {
+          b.item(ItemType.maxLength, (s) => s.u32(maxLength));
+        }
+        b.item(ItemType.implementationClassUid,
+            (s) => s.ascii(implementationClassUid));
         if (implementationVersionName != null) {
           b.item(ItemType.implementationVersionName,
               (s) => s.ascii(implementationVersionName!));
@@ -207,6 +213,7 @@ final class UserInformation {
 
   static UserInformation decode(PduReader r, int end) {
     var maxLength = 0;
+    var hasMaxLength = false;
     var implementationClassUid = '';
     String? versionName;
     final roles = <RoleSelection>[];
@@ -216,6 +223,7 @@ final class UserInformation {
       switch (type) {
         case ItemType.maxLength:
           maxLength = r.u32();
+          hasMaxLength = true;
         case ItemType.implementationClassUid:
           implementationClassUid = r.text(itemEnd - r.at);
         case ItemType.implementationVersionName:
@@ -230,6 +238,7 @@ final class UserInformation {
     });
     return UserInformation(
         maxLength: maxLength,
+        hasMaxLength: hasMaxLength,
         implementationClassUid: implementationClassUid,
         implementationVersionName: versionName,
         roles: roles,

@@ -1,3 +1,5 @@
+import 'package:dartdicom/dartdicom.dart';
+import '../trace/observations.dart';
 import 'dart:async';
 import 'dart:collection';
 
@@ -34,8 +36,12 @@ final class DimseChannel {
   Future<void> send(DimseMessage message) {
     _trace(message, outgoing: true);
     final sent = _sending.then((_) async {
+      var first = true;
       for (final pdu in fragment(message, _peerMaxPduLength)) {
-        await _dul.send(pdu);
+        await _dul.send(pdu,
+            onSubmitted:
+                first ? () => _observe(message, outgoing: true) : null);
+        first = false;
       }
     });
     _sending = sent.then((_) {}, onError: (Object _) {});
@@ -75,8 +81,21 @@ final class DimseChannel {
       _received.addAll(messages);
     }
     final message = _received.removeFirst();
+    _observe(message, outgoing: false);
     _trace(message, outgoing: false);
     return message;
+  }
+
+  void _observe(DimseMessage message, {required bool outgoing}) {
+    _dul.observations?.emit(ObservationKind.dimse,
+        direction: outgoing
+            ? ObservationDirection.outgoing
+            : ObservationDirection.incoming,
+        contextId: message.contextId,
+        commandField: message.command.get(DicomTags.commandField),
+        messageId: message.command.get(DicomTags.messageId),
+        responseTo: message.command.get(DicomTags.messageIdBeingRespondedTo),
+        status: message.command.get(DicomTags.status));
   }
 
   void _trace(DimseMessage message, {required bool outgoing}) {

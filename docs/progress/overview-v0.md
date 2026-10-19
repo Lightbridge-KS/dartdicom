@@ -386,3 +386,38 @@ Candidates the refactoring passes over `dartdicom_net` (2026-10-17) and `dartdic
 | CI time grows | Path filters; interop runs as a nightly or manual live gate |
 | Someone takes the package names | Names were confirmed free on 2026-10-16; publish `0.1.0-dev.1` once M1 passes |
 | Binary fixtures bloat the repo | A small curated set; larger corpora are fetched into the cache by `fixtures corpus fetch` |
+
+## Post-prerelease: typed association diagnostics
+
+Paired-consumer implementation adds optional payload-free association
+observations, proposed context results, numeric abort fields, establishment
+cancellation and explicit transport cleanup completion. Existing APIs and default
+timeouts remain compatible. See the
+[public diagnostic contract](../api/association-observations.md).
+
+Local full dry gates passed for the working tree; the package publication dry-run
+skips the changed network package until its changes are committed, as designed by
+the existing script. The focused network suite additionally verifies late socket
+completion/cancellation. Publication and the consumer's final Git dependency pin
+remain separate delivery steps; no release is claimed here.
+
+Review corrections (2026-10-19):
+
+- [x] Preserve cleanup failure through `Association.closed` and emit local closure
+  only after confirmed cleanup; keep protocol results independent.
+- [x] Emit typed outgoing DIMSE facts at first-PDU submission, after queue,
+  encoding/fragmentation and DUL admission checks.
+- [x] Distinguish malformed input from actual transport EOF.
+- [x] Preserve Max Length presence separately from its networking fallback.
+- [x] Add regressions for the four corrections, including late cleanup errors and
+  queued-send cancellation (`test/trace/observation_regressions_test.dart`).
+- [x] Rerun full dry gates and the actual Dart 3.6.0 floor after corrections:
+  17 new regression tests; 186 network tests pass on both SDKs. Full dry gates
+  pass on Dart 3.13.5, including Chrome, Wasm, fixtures and the written-file gate.
+  Actual Dart 3.6.0 analysis and VM tests pass in a temporary source snapshot.
+  The local floor wrapper selected a different SDK despite announcing 3.6.0;
+  the replay explicitly selected the installed 3.6.0 SDK and verified its version.
+  The dry script retains its dirty-network-package skip; a direct network
+  publication dry-run completed validation with only the expected dirty-tree
+  warning (exit 65). No clean-checkout publication, new live run or hosted CI
+  is claimed.

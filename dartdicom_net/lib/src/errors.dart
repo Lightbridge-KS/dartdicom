@@ -18,7 +18,7 @@ final class AssociationRejected extends DimseException {
       {required this.result, required this.source, required this.reason})
       : super('AssociationRejected: the peer rejected the association '
             '${result == 1 ? 'permanently' : 'transiently'}: '
-            '${_rejectReason(source, reason)}');
+            '${describeAssociationRejection(source, reason)}');
 
   /// 1 permanent, 2 transient.
   final int result;
@@ -34,7 +34,13 @@ final class AssociationRejected extends DimseException {
 /// The association ended without a release: the peer sent A-ABORT, or the
 /// connection closed. Operations in progress fail with it.
 final class AssociationAborted extends DimseException {
-  AssociationAborted(String why) : super('AssociationAborted: $why');
+  AssociationAborted(String why,
+      {this.source, this.reason, this.locallyCancelled = false})
+      : super('AssociationAborted: $why');
+
+  /// Numeric A-ABORT fields; absent for transport closure/local interruption.
+  final int? source, reason;
+  final bool locallyCancelled;
 }
 
 /// The peer broke the DICOM Upper Layer or DIMSE protocol; the association
@@ -75,7 +81,8 @@ final class DimseFailureException extends DimseException {
   final DimseFailure status;
 }
 
-String _rejectReason(int source, int reason) => switch ((source, reason)) {
+String describeAssociationRejection(int source, int reason) =>
+    switch ((source, reason)) {
       (1, 1) => 'no reason given',
       (1, 2) => 'application context name not supported',
       (1, 3) => 'calling AE title not recognized; register this AE title '

@@ -10,6 +10,7 @@ import 'read_ahead.dart';
 import '../timeouts.dart';
 import '../trace/record.dart';
 import '../trace/trace.dart';
+import '../trace/observations.dart';
 
 /// The DICOM Upper Layer service for one association (PS3.8 §9), in either
 /// role: PDUs in and out over a [Transport], every event checked against
@@ -33,16 +34,25 @@ import '../trace/trace.dart';
 final class Dul {
   /// The DUL of the requestor, over a transport that just connected.
   Dul.requestor(Transport transport,
-      {Timeouts timeouts = const Timeouts(), Trace? trace})
-      : this._(transport, UlEvent.evt1, timeouts, trace, isRequestor: true);
+      {Timeouts timeouts = const Timeouts(),
+      Trace? trace,
+      ObservationRecorder? observations})
+      : this._(transport, UlEvent.evt1, timeouts, trace,
+            isRequestor: true, observations: observations);
 
   /// The DUL of the acceptor, over a transport a listener just accepted.
   Dul.acceptor(Transport transport,
-      {Timeouts timeouts = const Timeouts(), Trace? trace})
-      : this._(transport, UlEvent.evt5, timeouts, trace, isRequestor: false);
+      {Timeouts timeouts = const Timeouts(),
+      Trace? trace,
+      ObservationRecorder? observations})
+      : this._(transport, UlEvent.evt5, timeouts, trace,
+            isRequestor: false, observations: observations);
 
   Dul._(this._transport, UlEvent opening, this.timeouts, this.trace,
-      {required this.isRequestor}) {
+      {required this.isRequestor, this.observations}) {
+    // Cleanup errors remain observable through closed, even if the caller only
+    // awaits a protocol result. They must not become unhandled async errors.
+    _closed.future.ignore();
     _pdus = StreamIterator(
         _transport.incoming.transform(PduFramer(maxLength: _pduCap)));
     _local(opening); // AE-1 or AE-5: the transport is already connected
@@ -55,6 +65,8 @@ final class Dul {
 
   /// Where PDUs and transitions are traced, if anywhere (N-14).
   final Trace? trace;
+  final ObservationRecorder? observations;
+  List<ContextObservation> _proposed = const [];
 
   /// The last local transition, traced with the PDU it sends.
   String? _localTransition;
@@ -79,6 +91,11 @@ final class Dul {
   final _readAhead = ReadAhead();
 
   final _ended = Completer<void>();
+  final _closed = Completer<void>();
+  final _cleanupDone = Completer<void>();
+
+  /// Completes after confirmed cleanup; fails if cleanup cannot be confirmed.
+  Future<void> get closed => _closed.future;
   DimseException? _cause;
   var _releasedByPeer = false;
   var _closedLocally = false;
@@ -109,6 +126,13 @@ final class Dul {
   /// Sends A-ASSOCIATE-RQ and waits for the answer: the A-ASSOCIATE-AC, or
   /// an [AssociationRejected] for an A-ASSOCIATE-RJ.
   Future<AssociateAc> requestAssociation(AssociateRq rq) async {
+    _proposed = [
+      for (final c in rq.contexts)
+        ContextObservation(
+            id: c.id,
+            abstractSyntax: c.abstractSyntax,
+            proposedTransferSyntaxes: c.transferSyntaxes)
+    ];
     _local(UlEvent.evt2); // AE-2
     await _transmit(rq);
     _startAcseTimer();
@@ -141,10 +165,10 @@ final class Dul {
   }
 
   /// Sends one P-DATA-TF (DT-1).
-  Future<void> send(PDataTf pdu) async {
+  Future<void> send(PDataTf pdu, {void Function()? onSubmitted}) async {
     _throwIfEnded();
     _local(UlEvent.evt9);
-    await _transmit(pdu);
+    await _transmit(pdu, onSubmitted: onSubmitted);
   }
 
   /// The next PDU for the association layer: A-ASSOCIATE-AC (Sta5),
@@ -178,6 +202,13 @@ final class Dul {
     if (_cause case final cause?) throw cause;
   }
 
+  /// Immediately attempts forced transport teardown and bounded local cleanup.
+  /// Observe [closed] to distinguish confirmed cleanup from a cleanup failure.
+  void forceClose() {
+    _destroyTransport();
+    unawaited(_closeLocally());
+  }
+
   /// Aborts the association (A-ABORT, service user) and closes the
   /// connection; [because] is recorded as the cause. Does nothing once the
   /// association has ended.
@@ -187,8 +218,14 @@ final class Dul {
     // Before an A-ASSOCIATE-RQ (Sta2) there is nothing to abort: closing the
     // connection is all (PS3.8 leaves Evt15 blank there).
     if (_state != UlState.sta2 && _local(UlEvent.evt15) == UlAction.aa1) {
-      await _sendAbort(source: 0, reason: 0);
+      try {
+        await _sendAbort(source: 0, reason: 0)
+            .timeout(const Duration(seconds: 1));
+      } on TimeoutException {
+        _destroyTransport();
+      }
     }
+    _destroyTransport();
     await _closeLocally();
   }
 
@@ -244,6 +281,9 @@ final class Dul {
   /// Performs the action for a received [event] ([pdu] for a PDU event).
   Future<void> _received(UlEvent event, Pdu? pdu,
       {String? invalid, DimseException? because, Uint8List? bytes}) async {
+    if (pdu != null || event == UlEvent.evt17) {
+      _observePdu(pdu, ObservationDirection.incoming);
+    }
     final from = _state;
     _armIdle(); // anything received restarts the network timer
     final cell = transition(from, event);
@@ -313,14 +353,18 @@ final class Dul {
         await _sendAbort(source: 0, reason: 0);
         await _closeLocally();
       case UlAction.aa2:
-        _end(AssociationAborted('the peer aborted the association'));
+        _end(AssociationAborted('the peer aborted the association',
+            source: (pdu as Abort?)?.source, reason: pdu?.reason));
         await _closeLocally();
       case UlAction.aa3:
         final abort = pdu! as Abort;
-        _end(AssociationAborted(abort.source == 2
-            ? 'the peer\'s DICOM service aborted the association '
-                '(reason ${abort.reason})'
-            : 'the peer aborted the association'));
+        _end(AssociationAborted(
+            abort.source == 2
+                ? 'the peer\'s DICOM service aborted the association '
+                    '(reason ${abort.reason})'
+                : 'the peer aborted the association',
+            source: abort.source,
+            reason: abort.reason));
         await _closeLocally();
       case UlAction.aa4:
         _end(AssociationAborted(
@@ -423,6 +467,9 @@ final class Dul {
     if (_ended.isCompleted) return;
     _idle?.cancel();
     if (_state != UlState.sta13) _stopTimer();
+    if (cause is DimseTimeout) {
+      observations?.emit(ObservationKind.timeout, timeoutKind: cause.kind);
+    }
     _cause = cause;
     _ended.complete();
     // An abnormal end drops the PDU not yet taken; a release keeps it.
@@ -453,10 +500,13 @@ final class Dul {
   }
 
   /// Sends [pdu]. A failed send means the connection is gone.
-  Future<void> _transmit(Pdu pdu) async {
+  Future<void> _transmit(Pdu pdu, {void Function()? onSubmitted}) async {
     final bytes = _encode(pdu);
     try {
-      await _transport.send(bytes);
+      final sent = _transport.send(bytes);
+      _observePdu(pdu, ObservationDirection.outgoing);
+      onSubmitted?.call();
+      await sent;
     } on Object {
       _end(AssociationAborted('the connection failed'));
       await _closeLocally();
@@ -465,9 +515,12 @@ final class Dul {
   }
 
   Future<void> _sendAbort({required int source, required int reason}) async {
-    final bytes = _encode(Abort(source: source, reason: reason));
+    final pdu = Abort(source: source, reason: reason);
+    final bytes = _encode(pdu);
     try {
-      await _transport.send(bytes);
+      final sent = _transport.send(bytes);
+      _observePdu(pdu, ObservationDirection.outgoing);
+      await sent;
     } on Object {
       // The connection may already be gone; closing is all that is left.
     }
@@ -487,20 +540,122 @@ final class Dul {
     return bytes;
   }
 
+  void _observePdu(Pdu? pdu, ObservationDirection direction) {
+    final kind = switch (pdu) {
+      AssociateRq() => ObservationKind.associateRequest,
+      AssociateAc() => ObservationKind.associateAccept,
+      AssociateRj() => ObservationKind.associateReject,
+      ReleaseRq() => ObservationKind.releaseRequest,
+      ReleaseRp() => ObservationKind.releaseResponse,
+      Abort() => ObservationKind.abort,
+      PDataTf() => ObservationKind.data,
+      null => ObservationKind.transportClosed,
+    };
+    observations?.emit(kind,
+        direction: direction,
+        contexts: pdu is AssociateAc
+            ? [
+                for (final c in _proposed)
+                  ContextObservation(
+                      id: c.id,
+                      scuRole: pdu.userInformation.roles
+                          .where((r) => r.sopClass == c.abstractSyntax)
+                          .firstOrNull
+                          ?.scu,
+                      scpRole: pdu.userInformation.roles
+                          .where((r) => r.sopClass == c.abstractSyntax)
+                          .firstOrNull
+                          ?.scp,
+                      abstractSyntax: c.abstractSyntax,
+                      proposedTransferSyntaxes: c.proposedTransferSyntaxes,
+                      result: pdu.results
+                          .where((x) => x.id == c.id)
+                          .firstOrNull
+                          ?.result,
+                      selectedTransferSyntax: pdu.results
+                          .where((x) => x.id == c.id && x.result == 0)
+                          .firstOrNull
+                          ?.transferSyntax),
+                for (final result in pdu.results
+                    .where((r) => !_proposed.any((c) => c.id == r.id)))
+                  ContextObservation(
+                      id: result.id,
+                      abstractSyntax: '',
+                      proposedTransferSyntaxes: const [],
+                      result: result.result,
+                      selectedTransferSyntax:
+                          result.result == 0 ? result.transferSyntax : null),
+              ]
+            : pdu is AssociateRq
+                ? _proposed
+                : const [],
+        result: pdu is AssociateRj ? pdu.result : null,
+        source: pdu is AssociateRj
+            ? pdu.source
+            : pdu is Abort
+                ? pdu.source
+                : null,
+        reason: pdu is AssociateRj
+            ? pdu.reason
+            : pdu is Abort
+                ? pdu.reason
+                : null,
+        peerImplementationClassUid: pdu is AssociateAc &&
+                RegExp(r'^[0-9]+(?:\.[0-9]+)+$')
+                    .hasMatch(pdu.userInformation.implementationClassUid) &&
+                pdu.userInformation.implementationClassUid.length <= 64
+            ? pdu.userInformation.implementationClassUid
+            : null,
+        maxInvoked: pdu is AssociateAc
+            ? pdu.userInformation.asyncWindow?.invoked
+            : null,
+        maxPerformed: pdu is AssociateAc
+            ? pdu.userInformation.asyncWindow?.performed
+            : null,
+        peerMaxPduLength: pdu is AssociateAc && pdu.userInformation.hasMaxLength
+            ? pdu.userInformation.maxLength
+            : null);
+  }
+
+  /// A successful forced teardown can confirm closure after a graceful-close
+  /// error. Custom transport errors never replace the protocol outcome.
+  bool _destroyTransport() {
+    if (_transport case AbortableTransport transport) {
+      try {
+        transport.destroy();
+        return true;
+      } on Object {/* Cleanup is confirmed only if graceful close succeeded. */}
+    }
+    return false;
+  }
+
   /// Closes the transport and stops reading it, so no subscription keeps
   /// the isolate alive. A closed transport ends the state machine (Sta1).
   Future<void> _closeLocally() async {
-    if (_closedLocally) return;
+    if (_closedLocally) return _cleanupDone.future;
     _closedLocally = true;
     _state = UlState.sta1;
     _stopTimer();
     _idle?.cancel();
     _end(_cause ?? AssociationAborted('the connection was closed'));
+    var transportClosed = false;
     try {
-      await _transport.close();
-    } on Object {
-      // Already closed.
+      await _transport.close().timeout(const Duration(seconds: 1));
+      transportClosed = true;
+    } on Object {/* A forced teardown may still confirm transport closure. */}
+    if (_destroyTransport()) transportClosed = true;
+    var subscriptionClosed = false;
+    try {
+      await _pdus.cancel().timeout(const Duration(seconds: 1));
+      subscriptionClosed = true;
+    } on Object {/* An unfinished cancellation cannot confirm cleanup. */}
+    if (transportClosed && subscriptionClosed) {
+      observations?.emit(ObservationKind.transportClosed);
+      _closed.complete();
+    } else {
+      _closed.completeError(
+          AssociationAborted('transport cleanup could not be confirmed'));
     }
-    await _pdus.cancel();
+    _cleanupDone.complete();
   }
 }

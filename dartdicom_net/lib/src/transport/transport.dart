@@ -15,3 +15,8 @@ abstract interface class Transport {
   /// Closes the connection gracefully.
   Future<void> close();
 }
+
+/// Optional immediate teardown for transports with potentially blocked writes.
+abstract interface class AbortableTransport implements Transport {
+  void destroy();
+}

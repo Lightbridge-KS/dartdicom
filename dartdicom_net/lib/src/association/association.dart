@@ -1,3 +1,5 @@
+import '../transport/cancellation.dart';
+import '../trace/observations.dart';
 import 'dart:async';
 
 import 'package:dartdicom/dartdicom.dart';
@@ -31,13 +33,43 @@ final class Association {
 
   /// Requests an association over [transport] with [rq].
   static Future<Association> request(
-      Transport transport, AssociateRq rq, ApplicationEntity ae) async {
-    final dul =
-        Dul.requestor(transport, timeouts: ae.timeouts, trace: ae.trace);
-    final ac = await dul.requestAssociation(rq);
-    return Association._(dul, rq.calledAeTitle, negotiatedContexts(rq, ac),
-        ac.userInformation.maxLength, ae.deflateCodec);
+      Transport transport, AssociateRq rq, ApplicationEntity ae,
+      {AssociationCancellation? cancellation,
+      ObservationRecorder? observations}) async {
+    final dul = Dul.requestor(transport,
+        timeouts: ae.timeouts, trace: ae.trace, observations: observations);
+    unawaited(cancellation?.whenCancelled.then((_) async {
+      await dul.abort(
+          because:
+              AssociationAborted('locally cancelled', locallyCancelled: true));
+    }));
+    if (cancellation?.isCancelled ?? false) {
+      await dul.abort(
+          because:
+              AssociationAborted('locally cancelled', locallyCancelled: true));
+      cancellation!.throwIfCancelled();
+    }
+    try {
+      final ac = await dul.requestAssociation(rq);
+      return Association._(dul, rq.calledAeTitle, negotiatedContexts(rq, ac),
+          ac.userInformation.maxLength, ae.deflateCodec);
+    } on Object {
+      dul.forceClose();
+      try {
+        await dul.closed;
+      } on Object {/* Preserve the original establishment failure. */}
+      rethrow;
+    }
   }
+
+  /// Immediately destroys an owned socket during bounded application shutdown.
+  /// No graceful release or protocol cancellation is implied.
+  void forceClose() => _dul.forceClose();
+
+  /// Completes after confirmed transport and subscription cleanup. Fails with
+  /// [AssociationAborted] if bounded teardown cannot confirm cleanup, separately
+  /// from the protocol result.
+  Future<void> get closed => _dul.closed;
 
   final Dul _dul;
   final DeflateCodec? _deflateCodec;

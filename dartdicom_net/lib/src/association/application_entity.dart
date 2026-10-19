@@ -1,11 +1,14 @@
 import 'package:dartdicom/dartdicom.dart';
 
 import '../acse/negotiation.dart';
+import '../errors.dart';
 import '../timeouts.dart';
 import '../trace/trace.dart';
 import '../pdu/pdus.dart';
 import '../transport/socket_transport.dart';
 import '../transport/transport.dart';
+import '../transport/cancellation.dart';
+import '../trace/observations.dart';
 import 'association.dart';
 import 'presentation_contexts.dart';
 
@@ -25,6 +28,7 @@ final class ApplicationEntity {
     this.maxPduLength = 16384,
     this.timeouts = const Timeouts(),
     this.trace,
+    this.observer,
     this.deflateCodec,
   });
 
@@ -48,6 +52,9 @@ final class ApplicationEntity {
   /// element value unless [Trace.showValues] is set.
   final Trace? trace;
 
+  /// Optional payload-free typed observations, isolated from protocol failures.
+  final AssociationObserver? observer;
+
   /// Compresses datasets that `sendCStore` sends on a Deflated context,
   /// e.g. `ZLibDeflateCodec()` from `package:dartdicom/io.dart`. Without
   /// one, a Deflated file is sent re-encoded in an uncompressed syntax.
@@ -59,18 +66,41 @@ final class ApplicationEntity {
   /// [DimseTimeout] if it doesn't connect or answer in time ([timeouts]),
   /// and a `SocketException` if it refuses or can't be reached.
   Future<Association> associate(String host, int port,
-      {required String aeTitle}) async {
+      {required String aeTitle,
+      AssociationCancellation? cancellation,
+      String? associationId}) async {
     final rq = associateRqFor(this, aeTitle);
-    final transport =
-        await SocketTransport.connect(host, port, timeout: timeouts.connect);
-    return Association.request(transport, rq, this);
+    final observations = ObservationRecorder(
+        observer, associationId ?? ObservationRecorder.createId());
+    observations.emit(ObservationKind.connecting);
+    final SocketTransport transport;
+    try {
+      transport = await SocketTransport.connect(host, port,
+          timeout: timeouts.connect, cancellation: cancellation);
+    } on DimseTimeout catch (e) {
+      observations.emit(ObservationKind.timeout, timeoutKind: e.kind);
+      rethrow;
+    }
+    observations.emit(ObservationKind.connected);
+    try {
+      cancellation?.throwIfCancelled();
+      return await Association.request(transport, rq, this,
+          cancellation: cancellation, observations: observations);
+    } on Object {
+      transport.destroy();
+      rethrow;
+    }
   }
 
-  /// Associates over an already connected [transport] (e.g. an
-  /// `InMemoryTransport` in a test) with the AE titled [aeTitle].
+  /// Associates over an already connected caller-supplied transport.
   Future<Association> associateOver(Transport transport,
-          {required String aeTitle}) =>
-      Association.request(transport, associateRqFor(this, aeTitle), this);
+          {required String aeTitle,
+          AssociationCancellation? cancellation,
+          String? associationId}) =>
+      Association.request(transport, associateRqFor(this, aeTitle), this,
+          cancellation: cancellation,
+          observations: ObservationRecorder(
+              observer, associationId ?? ObservationRecorder.createId()));
 }
 
 /// The A-ASSOCIATE-RQ [ae] sends to [calledAeTitle]: its requested
