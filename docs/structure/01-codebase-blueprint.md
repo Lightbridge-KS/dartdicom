@@ -388,7 +388,20 @@ Interfaces exist only at real seams, and each has at least two implementations.
 - the `examples/` programs, run end to end as executable docs (F34)
 - C-ECHO, C-FIND, C-GET, C-MOVE and C-STORE in both directions (PRD success criteria)
 
-**Release.**
+**GitHub-only prereleases (current).** *(amended)*
+
+All four package manifests own the same `0.1.0-dev.N` version, with coordinated
+dependency constraints and CHANGELOG sections. An annotated repository tag
+`v0.1.0-dev.N` must match every versioned manifest. The root workspace and
+unpublished examples have no package version to bump. These tags do not match
+the planned per-package pub.dev tag patterns below.
+
+After local dry, actual-floor, live and clean-package checks, the release commit
+is pushed and its hosted CI checked. No release-drafting workflow is implemented
+yet: the manual escape hatch creates a GitHub draft prerelease, which a human
+reviews and publishes. No pub.dev upload is part of this path.
+
+**Pub.dev release workflow (planned; not implemented).** *(amended)*
 
 1. **Version source of truth:** each package's `pubspec.yaml`. The tag must equal it (I-16).
 2. **Trigger:** pushing an annotated tag per package, matching the pub.dev automated-publishing tag pattern: `dartdicom-v{{version}}`, `dartdicom_pixel-v{{version}}`, `dartdicom_net-v{{version}}`, `dartdicom_web-v{{version}}`. `workflow_dispatch` is the escape hatch.

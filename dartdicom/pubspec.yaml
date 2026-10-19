@@ -1,7 +1,7 @@
 name: dartdicom
 description: >-
   Read, modify and write DICOM data in pure Dart: Part 10 files, a typed data dictionary, tags, UIDs and character sets. Runs on every Dart platform.
-version: 0.1.0-dev.1
+version: 0.1.0-dev.2
 repository: https://github.com/Lightbridge-KS/dartdicom/tree/main/dartdicom
 issue_tracker: https://github.com/Lightbridge-KS/dartdicom/issues
 topics: [dicom, medical-imaging, radiology, healthcare]

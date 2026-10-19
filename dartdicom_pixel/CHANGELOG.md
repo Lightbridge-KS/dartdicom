@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.1.0-dev.1 (unreleased)
+## [Unreleased]
+
+## [0.1.0-dev.2] - 2026-10-19
+
+GitHub-only prerelease; not published on pub.dev.
+
+### Changed
+
+- Coordinate the GitHub-only package version and core dependency with 0.1.0-dev.2.
+  Pixel runtime behavior is unchanged from 0.1.0-dev.1.
+
+## [0.1.0-dev.1] - 2026-10-18
 
 First pre-release, from GitHub as tag `v0.1.0-dev.1` (see the repository README, *Use from GitHub*); not on pub.dev yet.
 

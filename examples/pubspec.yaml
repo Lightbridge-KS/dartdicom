@@ -8,10 +8,10 @@ environment:
 resolution: workspace
 
 dependencies:
-  dartdicom: ^0.1.0-dev.1
-  dartdicom_pixel: ^0.1.0-dev.1
-  dartdicom_net: ^0.1.0-dev.1
-  dartdicom_web: ^0.1.0-dev.1
+  dartdicom: ^0.1.0-dev.2
+  dartdicom_pixel: ^0.1.0-dev.2
+  dartdicom_net: ^0.1.0-dev.2
+  dartdicom_web: ^0.1.0-dev.2
 
 dev_dependencies:
   lints: ">=5.1.0 <7.0.0"

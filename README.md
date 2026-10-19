@@ -2,14 +2,14 @@
 
 Pure-Dart DICOM packages: read, modify, write, display and exchange DICOM data on every Dart platform, with no native toolchain.
 
-> **Status: pre-release.** Nothing is published yet. The design lives in [`docs/`](docs/), starting with the [requirements](docs/req/dartdicom-prd.md).
+> **Status: pre-release.** GitHub-only prereleases; the packages are not published on pub.dev. The design lives in [`docs/`](docs/), starting with the [requirements](docs/req/dartdicom-prd.md).
 
 | Package | What it does | Platforms |
 |---|---|---|
 | [`dartdicom`](dartdicom/) | Data model; Part 10 read and write; dictionary, tags, UIDs, charsets | all |
 | [`dartdicom_pixel`](dartdicom_pixel/) | Pixel Data → typed arrays, LUTs, an 8-bit display buffer | all |
 | [`dartdicom_net`](dartdicom_net/) | DIMSE networking: C-ECHO, C-FIND, C-GET, C-MOVE, C-STORE | native |
-| [`dartdicom_web`](dartdicom_web/) | DICOMweb client: QIDO-RS, WADO-RS, STOW-RS | all |
+| [`dartdicom_web`](dartdicom_web/) | Scaffold only; no public DICOMweb API yet | — |
 
 Not a medical device; not for diagnostic use.
 
@@ -23,17 +23,17 @@ dependencies:
     git:
       url: https://github.com/Lightbridge-KS/dartdicom.git
       path: dartdicom
-      ref: <commit or tag>
+      ref: v0.1.0-dev.2
   dartdicom_pixel:
     git:
       url: https://github.com/Lightbridge-KS/dartdicom.git
       path: dartdicom_pixel
-      ref: <commit or tag>
+      ref: v0.1.0-dev.2
   dartdicom_net:
     git:
       url: https://github.com/Lightbridge-KS/dartdicom.git
       path: dartdicom_net
-      ref: <commit or tag>
+      ref: v0.1.0-dev.2
 
 # Required: dartdicom_pixel and dartdicom_net depend on dartdicom from
 # pub.dev, and pub takes a package from only one source.
@@ -42,7 +42,7 @@ dependency_overrides:
     git:
       url: https://github.com/Lightbridge-KS/dartdicom.git
       path: dartdicom
-      ref: <commit or tag>
+      ref: v0.1.0-dev.2
 ```
 
 - **The override is required.** Without it, `dart pub get` (or `flutter pub get`) fails with "dartdicom_net from git is forbidden".

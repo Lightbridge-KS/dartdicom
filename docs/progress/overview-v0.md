@@ -589,3 +589,23 @@ cleanup decomposition remains explicitly deferred.
   the earlier dirty-tree warnings are resolved. No publication, release, or
   hosted CI acceptance is implied.
 - DUL cleanup decomposition remains deferred.
+
+### GitHub-only 0.1.0-dev.2 preparation (2026-10-19)
+
+- [x] Coordinate all four package versions and internal/example dependency
+  constraints at 0.1.0-dev.2; retain the Dart 3.6 floor.
+- [x] Add per-package changelog entries, correct the dev.1 release headings, and
+  update GitHub installation examples and prerelease documentation. Core/pixel
+  runtime behavior is unchanged; web remains a scaffold.
+- [x] Verify pinned dry gates (Dart 3.13.5, including Chrome, Wasm, fixtures and
+  written files), actual Dart 3.6.0 dependency resolution/analysis/VM tests, all
+  19 live interop tests and both retrieval/render examples, all-file hooks and
+  diff hygiene. All 232 network tests pass on both SDKs. Runtime and test source
+  are unchanged from `046c4d6`; publication dry-runs await a clean commit.
+- [ ] Commit/push preparation; validate all four packages from a clean tree and
+  resolve an isolated Git consumer without source-path overrides.
+- [ ] Verify hosted CI on the release commit and the manifest/tag version match.
+- [ ] Push annotated tag `v0.1.0-dev.2` and create a GitHub draft prerelease.
+
+Publication remains a human review step. This release does not publish packages
+to pub.dev or update the first consumer's dependency pins.

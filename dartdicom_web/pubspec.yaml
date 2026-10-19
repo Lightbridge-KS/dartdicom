@@ -1,7 +1,7 @@
 name: dartdicom_web
 description: >-
   A DICOMweb client in pure Dart: QIDO-RS search, WADO-RS retrieve and STOW-RS store, on the Dart VM, in Flutter and in the browser.
-version: 0.1.0-dev.1
+version: 0.1.0-dev.2
 repository: https://github.com/Lightbridge-KS/dartdicom/tree/main/dartdicom_web
 issue_tracker: https://github.com/Lightbridge-KS/dartdicom/issues
 topics: [dicom, medical-imaging, radiology, dicomweb]
@@ -12,7 +12,7 @@ environment:
 resolution: workspace
 
 dependencies:
-  dartdicom: ^0.1.0-dev.1
+  dartdicom: ^0.1.0-dev.2
 
 dev_dependencies:
   lints: ">=5.1.0 <7.0.0"
