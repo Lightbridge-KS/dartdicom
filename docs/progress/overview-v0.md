@@ -421,3 +421,17 @@ Review corrections (2026-10-19):
   publication dry-run completed validation with only the expected dirty-tree
   warning (exit 65). No clean-checkout publication, new live run or hosted CI
   is claimed.
+
+### Network boundary and teardown fixes (2026-10-19)
+
+- [x] Bound every abort send to one second, including DUL reader protocol
+  violations; preserve terminal causes and consume late send errors.
+- [x] Require exactly four body bytes for A-ASSOCIATE-RJ, A-RELEASE-RQ/RP,
+  and A-ABORT, after validating the envelope length.
+- [x] Reject negotiation-item decoder overreads before advancing to a sibling;
+  retain unread-body skipping and unknown-item handling.
+- [x] Add regressions that fail before the corresponding fixes; retain six
+  negotiation-item characterization tests on the original module structure.
+
+Module extractions follow separately. Their local dry, floor, long-fuzz and live
+verification is recorded with the refactoring evidence.

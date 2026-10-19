@@ -121,6 +121,33 @@ void main() {
   });
 
   group('malformed PDUs are FormatExceptions (Evt19)', () {
+    for (final type in [0x03, 0x05, 0x06, 0x07]) {
+      test('fixed-body PDU type $type requires exactly four body bytes', () {
+        for (final length in [0, 1, 2, 3, 5, 8, 255]) {
+          final bytes = Uint8List.fromList(
+              [type, 0, 0, 0, 0, length, ...List.filled(length, 0)]);
+          expect(
+              () => Pdu.decode(bytes),
+              throwsA(isA<FormatException>().having((e) => e.message, 'message',
+                  'fixed-body PDU must contain exactly 4 body bytes')),
+              reason: 'body length $length');
+        }
+      });
+    }
+    test('four-byte fixed bodies retain fields and reserved-byte handling', () {
+      for (final pdu in [
+        const AssociateRj(result: 1, source: 1, reason: 7),
+        const ReleaseRq(),
+        const ReleaseRp(),
+        const Abort(source: 2, reason: 1),
+      ]) {
+        final bytes = pdu.encode();
+        final canonical = Uint8List.fromList(bytes);
+        bytes[1] = 0xFF; // the reserved PDU-header byte is still ignored
+        bytes[6] = 0xFF; // as is the first reserved body byte
+        expect(Pdu.decode(bytes).encode(), canonical);
+      }
+    });
     test('an unknown type', () {
       expect(
           () => Pdu.decode(_hex('09 00 00 00 00 00')), throwsFormatException);

@@ -218,12 +218,7 @@ final class Dul {
     // Before an A-ASSOCIATE-RQ (Sta2) there is nothing to abort: closing the
     // connection is all (PS3.8 leaves Evt15 blank there).
     if (_state != UlState.sta2 && _local(UlEvent.evt15) == UlAction.aa1) {
-      try {
-        await _sendAbort(source: 0, reason: 0)
-            .timeout(const Duration(seconds: 1));
-      } on TimeoutException {
-        _destroyTransport();
-      }
+      await _sendAbort(source: 0, reason: 0);
     }
     _destroyTransport();
     await _closeLocally();
@@ -514,13 +509,17 @@ final class Dul {
     }
   }
 
+  /// Bounds every abort send, including protocol violations in the reader, so
+  /// a blocked write cannot prevent local cleanup. Preserve the terminal cause.
   Future<void> _sendAbort({required int source, required int reason}) async {
     final pdu = Abort(source: source, reason: reason);
     final bytes = _encode(pdu);
     try {
       final sent = _transport.send(bytes);
       _observePdu(pdu, ObservationDirection.outgoing);
-      await sent;
+      await sent.timeout(const Duration(seconds: 1));
+    } on TimeoutException {
+      _destroyTransport();
     } on Object {
       // The connection may already be gone; closing is all that is left.
     }

@@ -183,6 +183,18 @@ length FFFFFFFF = undefined; the value ends at a delimiter: Item (FFFE,E000) · 
 
 **DIMSE** (PS3.8 / PS3.7):
 
+The fixed bodies of A-ASSOCIATE-RJ, A-RELEASE-RQ/RP, and A-ABORT must be exactly
+four bytes. The PDU decoder rejects shorter or extra bodies with a
+`FormatException`, after checking the declared envelope length against the
+supplied bytes. Reserved bytes retain their existing ignored-on-read behavior.
+*(amended)*
+
+Negotiation-item decoders must not consume beyond their declared item body.
+`PduReader.items` rejects overconsumption with a `FormatException` before
+advancing to a sibling; unread body bytes retain their existing skip behavior.
+This also covers undersized maximum-length, asynchronous-window, and
+role-selection sub-items followed by otherwise valid siblings. *(amended)*
+
 ```text
 PDU          | type 1 | reserved 1 | length 4 (big-endian) | body
 P-DATA-TF    | one or more PDVs: | length 4 | presentation context ID 1 | control header 1 (command?/last?) | fragment |

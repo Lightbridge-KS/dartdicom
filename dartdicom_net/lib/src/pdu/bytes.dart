@@ -101,7 +101,8 @@ final class PduReader {
   /// | body`: the reading side of [PduWriter.item]. [each] reads one body,
   /// which ends at `itemEnd`; whatever it leaves unread is skipped. An item
   /// that runs past [end], the end of the item or PDU holding it, is a
-  /// [FormatException].
+  /// [FormatException]. A decoder that consumes beyond its declared body also
+  /// throws a [FormatException], rather than rewinding into the next item.
   void items(int end, void Function(int type, int itemEnd) each) {
     while (at < end) {
       final type = u8();
@@ -113,6 +114,9 @@ final class PduReader {
             'an item runs past the item or PDU that holds it');
       }
       each(type, itemEnd);
+      if (at > itemEnd) {
+        throw const FormatException('an item decoder ran past the item body');
+      }
       at = itemEnd;
     }
   }

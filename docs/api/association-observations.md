@@ -58,7 +58,11 @@ cleanup result. Repeated teardown shares that same result. *(amended)*
 
 `forceClose()` tears down an owned socket immediately for a bounded shutdown;
 it does not promise graceful release. Abort sending and local close each have
-bounded waits before forced socket teardown. Caller-supplied transports should
+bounded waits before forced socket teardown. The one-second abort-send bound
+also applies to protocol violations detected by the DUL reader; a stalled
+A-ABORT write cannot prevent subsequent bounded cleanup or replace the original
+protocol cause. Late send completions and errors are consumed. *(amended)*
+Caller-supplied transports should
 implement `AbortableTransport` when they own forcible resources. Callers awaiting
 `closed`, including after `forceClose()`, must handle cleanup failure separately
 from the protocol result.

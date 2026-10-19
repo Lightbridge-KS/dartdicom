@@ -40,6 +40,11 @@ sealed class Pdu {
     if (6 + length != pdu.length) {
       throw const FormatException('PDU length disagrees with its size');
     }
+    if ((type == 0x03 || type == 0x05 || type == 0x06 || type == 0x07) &&
+        length != 4) {
+      throw const FormatException(
+          'fixed-body PDU must contain exactly 4 body bytes');
+    }
     return switch (type) {
       0x01 => AssociateRq._decode(r),
       0x02 => AssociateAc._decode(r),
