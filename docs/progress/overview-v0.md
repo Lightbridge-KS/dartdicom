@@ -602,10 +602,18 @@ cleanup decomposition remains explicitly deferred.
   19 live interop tests and both retrieval/render examples, all-file hooks and
   diff hygiene. All 232 network tests pass on both SDKs. Runtime and test source
   are unchanged from `046c4d6`; publication dry-runs await a clean commit.
-- [ ] Commit/push preparation; validate all four packages from a clean tree and
-  resolve an isolated Git consumer without source-path overrides.
-- [ ] Verify hosted CI on the release commit and the manifest/tag version match.
-- [ ] Push annotated tag `v0.1.0-dev.2` and create a GitHub draft prerelease.
+- [x] Commit/push metadata preparation as `23f4249`; all four clean-tree package
+  publication dry-runs pass with zero warnings. An isolated consumer resolves all
+  four Git dependencies to that commit and passes analysis and public API smoke
+  checks on Dart 3.13.5 and actual Dart 3.6.0, without sibling-path overrides.
+- [x] Prepare the manual draft notes and verify that `v0.1.0-dev.2` agrees with
+  all four versioned manifests and their changelog entries.
+
+The final release commit repeats the clean-package and isolated-Git-consumer
+checks after this evidence-only documentation update. Hosted CI must pass on that
+commit before the annotated tag is pushed. The GitHub draft prerelease owns the
+final commit, check URLs and tag/draft status; these delivery receipts are not
+inferred from local checks.
 
 Publication remains a human review step. This release does not publish packages
 to pub.dev or update the first consumer's dependency pins.
