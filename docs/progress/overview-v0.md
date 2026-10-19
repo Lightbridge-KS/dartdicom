@@ -573,3 +573,19 @@ constructor test passes before the move. Earlier DUL and PDV work is preserved.
 Long network fuzz passes with seed 0: 100,000 PDU-decoder cases, 100,000
 assembler cases, 25,000 framing cases and 5,000 association scenarios. DUL
 cleanup decomposition remains explicitly deferred.
+
+### Network refactoring delivery (2026-10-19)
+
+- `9eb63d1` — bounded abort sending, four-byte fixed PDU bodies, and item
+  boundary enforcement. The fix-only staged tree passes analysis and all 210
+  network tests independently of the module extractions.
+- `9e0181a` — DUL observation projection, PDV codec, sealed PDU-family split,
+  and three negotiation-item modules behind compatibility barrels. The isolated
+  staged tree passes analysis and all 232 network tests.
+- Final production source matches the locally verified extraction: full dry
+  gates, actual Dart 3.6 floor, long network fuzz, 19 live interop tests and both
+  retrieval/render examples pass as detailed above. Commit hooks pass.
+- A publication dry-run after the code commits passes with zero warnings;
+  the earlier dirty-tree warnings are resolved. No publication, release, or
+  hosted CI acceptance is implied.
+- DUL cleanup decomposition remains deferred.
