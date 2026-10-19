@@ -149,6 +149,8 @@ dartdicom/                        git root · pub workspace (github.com/Lightbri
 │   └── example/  README.md  llms.txt  CHANGELOG.md  LICENSE  pubspec.yaml
 ├── dartdicom_pixel/lib/src/      lut/ · display/ · pixel_array/ · decode/ · pixels.dart · errors.dart · codec/ (P1)
 ├── dartdicom_net/lib/src/        pdu/ · fsm/ · dul/ · acse/ · dimse/ · association/ (+ presentation_contexts.dart, F29) · scp/ · sink/ · transport/ · trace/ · errors.dart
+│   ├── pdu/                     pdus.dart is the export barrel; pdus/pdu.dart owns the sealed family, envelope and dispatch, with associate.dart, data.dart and release_abort.dart as parts (I-36); pdv.dart owns the PDV model/codec (I-35); items.dart is the negotiation-item barrel over items/identifiers.dart, presentation_context.dart and user_information.dart (I-37); bytes.dart owns big-endian primitives *(amended)*
+│   ├── dul/                     dul.dart owns protocol state, reader, actions, timers and cleanup; pdu_observations.dart owns PDU projection and the proposal snapshot; framer.dart and read_ahead.dart retain their roles (I-34) *(amended)*
 │                                 every package root also has README.md (with the pydicom mapping) and llms.txt (F31)
 │                                 every package's test/ is laid out like core's: one folder per lib/src folder, gates/ for whole-library gates, support/ for shared helpers; net adds live/ for the live gates *(amended)*
 ├── dartdicom_web/lib/src/        client/ · qido/ · wado/ · stow/ · multipart/ · auth/
@@ -205,6 +207,26 @@ Two rules *inside* packages:
 
 - In core, `dataset/` imports nothing from `read/` or `write/` (F13), except `dataset/dataset.dart` for `Dataset.fromBytes` / `toBytes` (F38). `read/` and `write/` never import `file/`. *(amended)*
 - In net, layers import downward only: scp → association → dimse/acse → dul → pdu. `trace/` sits below them all (rank 0), so every layer can emit to it; it holds core `Dataset`s, never net types. *(amended, M3)*
+- Only `dul/dul.dart` imports `dul/pdu_observations.dart`; the projection imports
+  only PDU types and observation types, with no protocol-state or transport edge
+  (I-34). `Dul` controls when facts are emitted and retains its recorder for DIMSE.
+  PDU-aware projection stays above `trace/`. *(amended)*
+- Only `pdu/pdus/pdu.dart` imports `pdu/pdv.dart` in net `lib/`; only the
+  `pdu/pdus.dart` barrel re-exports it. The re-export forwards the same `Pdv`
+  type and constructor; the PDV module depends only on typed bytes and
+  `pdu/bytes.dart`, with no envelope dependency (I-35). *(amended)*
+- Only `pdu/pdus.dart` exports the implementation library in `pdu/pdus/`.
+  Its entry `pdu.dart` owns the sealed base, envelope and dispatch, and includes
+  three parts: `associate.dart` (RQ/AC/RJ and shared association headers),
+  `data.dart` (P-DATA-TF), and `release_abort.dart` (RELEASE-RQ/RP and ABORT).
+  They share one library, preserving private decoders and exhaustive matching;
+  the barrel forwards the same types and constructors (I-36). *(amended)*
+- Only `pdu/items.dart` exports the three negotiation-item libraries in
+  `pdu/items/`. Other production modules use this barrel. `identifiers.dart`
+  owns item codes and the application-context name; presentation contexts and
+  user information each depend only on these identifiers and byte primitives
+  (plus typed bytes for user information). No reverse or sibling dependency is
+  allowed; exports retain the same types and constructors (I-37). *(amended)*
 - In pixel, folders import downward only: `pixels.dart` → `decode/` → `pixel_array/` → `display/` → `lut/`. `lut/` reads core types and plain values, never `PixelModule`; `errors.dart` is unranked (I-32). *(added, M4)*
 
 **Enforcement.** A layering rule that is only written down is already broken, so each rule has a tool:
@@ -270,8 +292,15 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Add a lenient-read repair | by what it repairs: file framing in `dartdicom/lib/src/read/parser.dart`; an element header (VR, explicit or implicit) in `read/parse/header.dart`; one that is only reported in `read/parse/checks.dart`; structure (truncation, trailing bytes) in `read/parse/walker.dart`. Plus its `RepairKind` in `dartdicom/lib/src/dataset/read_report.dart` and a case in `test/read/lenient_test.dart` *(amended)* |
 | Add an uncompressed transfer syntax | `dartdicom/lib/src/uid/transfer_syntax.dart`: a descriptor (explicit VR? endianness, deflated, encapsulated) that both the reader and the writer read |
 | Change PHI masking | `dartdicom/lib/src/redact/` (dump, C-21); the protocol trace's masking is `dartdicom_net/lib/src/trace/`: `trace.dart` masks DIMSE command fields, `record.dart` holds back P-DATA bytes (F5) *(amended)* |
-| Add a PDU sub-item (e.g. user identity) | `dartdicom_net/lib/src/pdu/items.dart` |
+| Add a User Information sub-item (e.g. user identity) | `dartdicom_net/lib/src/pdu/items/user_information.dart`; shared item codes in `items/identifiers.dart`, callers retain `items.dart` (I-37) *(amended)* |
+| Change presentation-context item codecs | `dartdicom_net/lib/src/pdu/items/presentation_context.dart` (I-37) *(amended)* |
+| Change negotiation-item boundary enforcement | `dartdicom_net/lib/src/pdu/bytes.dart`; `test/pdu/items_test.dart` pins sub-item overread rejection *(amended)* |
+| Change a PDV item's length, control bits, or payload codec | `dartdicom_net/lib/src/pdu/pdv.dart`; `pdus/data.dart` owns the P-DATA-TF body and fragment ordering (I-35) *(amended)* |
+| Change PDU envelope validation or type dispatch | `dartdicom_net/lib/src/pdu/pdus/pdu.dart`; the existing `pdu/pdus.dart` import is the export barrel (I-36) *(amended)* |
+| Change an association PDU or shared association header | `dartdicom_net/lib/src/pdu/pdus/associate.dart` (I-36) *(amended)* |
+| Change release or abort PDU codecs | `dartdicom_net/lib/src/pdu/pdus/release_abort.dart` (I-36) *(amended)* |
 | Fix a state-machine transition | `dartdicom_net/lib/src/fsm/table.dart` |
+| Change PDU observation fields or proposal/result projection | `dartdicom_net/lib/src/dul/pdu_observations.dart`; emission timing and protocol lifecycle stay in `dul/dul.dart` (I-34) *(amended)* |
 | Change what the StorageScp accepts (classes, syntaxes, rejections) | `dartdicom_net/lib/src/acse/acceptor.dart`; the peer check in `dartdicom_net/lib/src/scp/storage_scp.dart` *(amended, M3)* |
 | Answer another request on an acceptor association | `dartdicom_net/lib/src/association/serve.dart` (N-15 makes it public) *(amended, M3)* |
 | Add a DIMSE service | `dartdicom_net/lib/src/dimse/messages.dart` plus an `Association` method |
@@ -334,6 +363,10 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | I-31 ★ | In core, only `read/parser.dart` imports `read/parse/`; the rest of `lib/` reads through `parsePart10` and `parseDataset` | architecture test |
 | I-32 ★ | In pixel, folders import downward only: `pixels.dart` → `decode/` → `pixel_array/` → `display/` → `lut/` (§4) | `dartdicom_pixel/test/gates/architecture_test.dart` |
 | I-33 ★ | Display agrees with pydicom: for every fixture and corpus file with a VOI, each pixel of `toDisplay` is within 1 gray level of pydicom's `apply_modality_lut` then `apply_voi_lut`, rescaled to 0–255 (a window by pydicom's own output range, a LUT by 2^bits − 1) and compared before MONOCHROME1's inversion; `toModality()` equals `apply_modality_lut` bit for bit (F47) | `dartdicom_pixel/test/gates/lut_test.dart` over `fixtures/data/lut/`; the pixel corpus gate over the cached LUT goldens |
+| I-34 ★ | In net `lib/`, only `dul/dul.dart` imports the PDU observation projection; the projection imports only PDU and observation types, preventing a dependency back into protocol state | `dartdicom_net/test/gates/architecture_test.dart` rejects relative/package imports and exports bypassing the DUL, and gates the projection's imports *(amended)* |
+| I-35 ★ | In net `lib/`, only the sealed entry `pdu/pdus/pdu.dart` imports `pdu/pdv.dart` and only the `pdu/pdus.dart` barrel re-exports it; the PDV module remains a leaf; the export forwards the same `Pdv` type and constructor | `dartdicom_net/test/gates/architecture_test.dart`; type/constructor identity and codec characterization through the old import in `test/pdu/pdv_test.dart` *(amended)* |
+| I-36 ★ | Only the export barrel references the PDU implementation library; its three registered family parts share the sealed base's library and private decoders; all types, constructors, and the decoder are forwarded unchanged | `dartdicom_net/test/gates/architecture_test.dart` checks imports, exports, part membership and leaf dependencies; `test/pdu/pdu_exports_test.dart` checks identity, const constructors, and exhaustive matching *(amended)* |
+| I-37 ★ | Only the item barrel references negotiation-item implementation modules from outside their folder; identifiers have no imports, and the two codecs depend only on identifiers and byte primitives; exports forward the same types and constructors | `dartdicom_net/test/gates/architecture_test.dart` checks relative/package/conditional references, module membership and leaf imports; `test/pdu/items_test.dart` pins identity, item boundaries, bytes, ordering and data ownership *(amended)* |
 
 ## 9. CI and release
 

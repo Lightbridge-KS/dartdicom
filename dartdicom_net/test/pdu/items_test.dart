@@ -2,6 +2,11 @@ import 'dart:typed_data';
 
 import 'package:dartdicom_net/src/pdu/bytes.dart';
 import 'package:dartdicom_net/src/pdu/items.dart';
+import 'package:dartdicom_net/src/pdu/items/identifiers.dart' as identifiers;
+import 'package:dartdicom_net/src/pdu/items/presentation_context.dart'
+    as contexts;
+import 'package:dartdicom_net/src/pdu/items/user_information.dart'
+    as information;
 import 'package:test/test.dart';
 
 Uint8List _items(void Function(PduWriter) write) {
@@ -14,6 +19,42 @@ UserInformation _decode(Uint8List bytes) =>
     UserInformation.decode(PduReader(bytes), bytes.length);
 
 void main() {
+  test('item barrel forwards type and constructor identity', () {
+    for (final pair in <(Object, Object)>[
+      (ItemType, identifiers.ItemType),
+      (ProposedContext, contexts.ProposedContext),
+      (ContextResult, contexts.ContextResult),
+      (RoleSelection, information.RoleSelection),
+      (AsyncOperationsWindow, information.AsyncOperationsWindow),
+      (UserInformation, information.UserInformation),
+      (ProposedContext.new, contexts.ProposedContext.new),
+      (ContextResult.new, contexts.ContextResult.new),
+      (RoleSelection.new, information.RoleSelection.new),
+      (AsyncOperationsWindow.new, information.AsyncOperationsWindow.new),
+      (UserInformation.new, information.UserInformation.new),
+      (dicomApplicationContext, identifiers.dicomApplicationContext),
+      (
+        const ProposedContext(1, '1', ['2']),
+        const contexts.ProposedContext(1, '1', ['2'])
+      ),
+      (const ContextResult(1, 0, '2'), const contexts.ContextResult(1, 0, '2')),
+      (
+        const RoleSelection('1', scu: true, scp: false),
+        const information.RoleSelection('1', scu: true, scp: false)
+      ),
+      (
+        const AsyncOperationsWindow(invoked: 1, performed: 2),
+        const information.AsyncOperationsWindow(invoked: 1, performed: 2)
+      ),
+      (
+        const UserInformation(maxLength: 1, implementationClassUid: '1'),
+        const information.UserInformation(
+            maxLength: 1, implementationClassUid: '1')
+      ),
+    ]) {
+      expect(identical(pair.$1, pair.$2), isTrue);
+    }
+  });
   group('item boundaries', () {
     for (final (name, body) in [
       ('maximum length', [0x51, 0, 0, 1, 0]),

@@ -294,6 +294,9 @@ Candidates the refactoring passes over `dartdicom_net` (2026-10-17) and `dartdic
   - pixel: lift `_correct` (masking and sign extension), the per-dtype allocation and the supported-encoding gate out of `decode/native.dart` into a shared decode module. Trigger: X-06 RLE, the second decoder, with X-05 drawing the codec seam.
   - pixel: move the typed-list switches (`_like` in `native.dart`, `_view` and `_unmodifiable` in `pixel_array.dart`) onto `PixelDtype`. Trigger: X-06, or a new dtype such as Float Pixel Data. Today they do different jobs over the same types, not one rule twice.
 - **Not picked** (worth doing, not scheduled):
+  - net: separate resource cleanup mechanics from protocol termination within
+    `Dul._closeLocally`; keep state and completion ownership in `Dul`. Deferred
+    after the 2026-10-19 observation extraction review.
   - net: `Association._operation` as a private class (Replace Function with Command), so its seven pieces of cancel and back-pressure state carry names and docs (F14). Judge after reading it as 424f140 left it.
   - net: `serveStorage` builds its own `DimseChannel`, which removes `scp/`'s import of `dimse/`.
 - **Rejected:**
@@ -422,16 +425,151 @@ Review corrections (2026-10-19):
   warning (exit 65). No clean-checkout publication, new live run or hosted CI
   is claimed.
 
-### Network boundary and teardown fixes (2026-10-19)
+### DUL teardown and observation refactor (2026-10-19)
 
-- [x] Bound every abort send to one second, including DUL reader protocol
-  violations; preserve terminal causes and consume late send errors.
+- [x] Bound all A-ABORT sends, including reader protocol violations, by the
+  existing one-second limit; preserve the protocol cause and consume late send
+  results. Six new protocol-abort regressions fail before the fix; those and two
+  local-abort preservation cases pass after it (`test/dul/abort_teardown_test.dart`).
+- [x] Extract PDU observation projection and its proposal snapshot into a DUL-local
+  module; preserve fields, sequence, immutable snapshots, null/zero distinctions,
+  callback isolation, and submission points. Keep `Dul.observations` available to
+  DIMSE; enforce the module import seam in the architecture gate.
+- [x] Verify dry, actual Dart 3.6 floor, observation equivalence, and live gates:
+  - 202 network tests pass on Dart 3.13.5 and actual Dart 3.6.0: all 186 original
+    tests remain, with 8 abort-teardown regressions, 7 projection characterization
+    tests, and the I-34 architecture test added.
+  - The characterization tests pass before extraction. All observation fields
+    except elapsed time match across 32 seeded negotiation transcripts before
+    extraction, after extraction within the file, and after the module move;
+    elapsed time is checked for monotonic ordering. Projection code is unchanged
+    apart from names and formatting.
+  - Planted relative/package imports, an export, and a reverse dependency fail
+    I-34. Planted snapshot, first-match, UID-filtering, and direction changes fail
+    the characterization tests; every mutation was restored.
+  - Full dry gates pass on Dart 3.13.5, including Chrome, Wasm, fixtures and
+    written-file checks. The runner's child processes require the selected SDK
+    first on PATH; the actual floor replay verifies Dart 3.6.0 before analysis
+    and all workspace VM tests in a separate source snapshot.
+  - All 19 live interop tests pass against Orthanc, DCMTK, and pynetdicom; the
+    C-GET and C-MOVE examples both retrieve and render a frame.
+  - A direct network publication dry-run includes the new module and completes
+    validation with only the expected uncommitted-tree warning (exit 65). The
+    full dry script retains its dirty-package skip. No publication or hosted CI
+    is claimed.
+
+Local verification completed before delivery. Cleanup decomposition remains deferred;
+the reader, action switch, timers, and terminal state stay together.
+
+### Fixed-body PDU validation and PDV extraction (2026-10-19)
+
 - [x] Require exactly four body bytes for A-ASSOCIATE-RJ, A-RELEASE-RQ/RP,
-  and A-ABORT, after validating the envelope length.
-- [x] Reject negotiation-item decoder overreads before advancing to a sibling;
-  retain unread-body skipping and unknown-item handling.
-- [x] Add regressions that fail before the corresponding fixes; retain six
-  negotiation-item characterization tests on the original module structure.
+  and A-ABORT; reject both short and extra bodies with a `FormatException`.
+  Keep envelope-length validation first and preserve reserved-byte handling.
+  Four new length-regression tests fail before the fix.
+- [x] Move single-PDV encoding/decoding onto `Pdv`, preserving constructors,
+  bytes, fragment order, exact errors/read order, ignored reserved control bits,
+  mutable payloads, and zero-copy decoded views.
+- [x] Extract `Pdv` into `pdu/pdv.dart`; re-export the same class from
+  `pdus.dart`, retain the sealed PDU family, and enforce the import seam.
+- [x] Verify byte/error equivalence, mutation checks, dry and actual floor gates,
+  long network fuzz, and live interop:
+  - 216 network tests pass on Dart 3.13.5 and actual Dart 3.6.0; all preceding
+    202 test names remain. Added 5 fixed-body tests, 8 PDV characterization and
+    compatibility tests, and the I-35 architecture test.
+  - Seven PDV characterization tests pass before extraction. All 4,096 seeded
+    inputs match before, within-file, and after extraction: 2,984 successful
+    decodes and 1,112 identical FormatExceptions. Comparisons include encoded
+    bytes, fields, summaries, offsets, mutable aliasing, and exact error text.
+  - Fifteen planted mutations fail the new preservation and architecture checks;
+    each is restored. The module move preserves the in-file class unchanged.
+  - Full dry gates pass on Dart 3.13.5, including Chrome, Wasm, fixtures, and
+    written-file checks. An isolated source snapshot verifies both SDK and
+    dependency configuration as Dart 3.6.0, then passes analysis and workspace
+    VM tests. The earlier workspace-local snapshot's configuration was rewritten
+    for a newer SDK; its failed result is not floor evidence.
+  - Long network fuzz passes: 100,000 decoder cases, 100,000 assembler cases,
+    25,000 framing cases, and 5,000 association scenarios (seed 0).
+  - All 19 live interop tests and both C-GET/C-MOVE render examples pass.
+    A consumer of local package archives verifies the re-export and codec away
+    from the original source tree. Publication dry-run includes the new module
+    and reports only the expected dirty-tree warning (exit 65).
+  - All-file and explicit new-file hooks pass; `git diff --check` is clean.
 
-Module extractions follow separately. Their local dry, floor, long-fuzz and live
-verification is recorded with the refactoring evidence.
+The preceding DUL work is preserved. Verification does not imply publication
+or hosted CI acceptance.
+
+### PDU family split (2026-10-19)
+
+- [x] Make `pdu/pdus.dart` an export barrel over one sealed library with
+  association, data, and release/abort parts in `pdu/pdus/`.
+- [x] Preserve constructors and type identity, sealing and exhaustive matching,
+  private decoders, wire bytes, fixed-body validation, exact error order/text,
+  summaries, and mutable zero-copy payloads. Update I-35 and gate part membership
+  and implementation imports.
+- [x] Verify pure-move source equivalence, seeded PDU results, dry and isolated
+  Dart 3.6 floor checks, live interop, and local artifact consumption:
+  - All four implementation bodies match the pre-move source exactly. All 8,192
+    seeded inputs match: 2,959 successful decodes and 5,233 FormatExceptions,
+    including fields, wire bytes, summaries, and error text.
+  - 219 network tests pass on Dart 3.13.5 and actual Dart 3.6.0. All behavioral
+    test names remain; I-35 is renamed for its amended import/export ownership.
+    Added I-36, re-export identity, and exhaustive/const-constructor checks.
+  - Thirteen planted mutations fail the import, part-membership, sealing,
+    identity, and dispatch checks; all are restored.
+  - Full dry gates pass, including Chrome, Wasm, fixtures, and written-file
+    checks. An isolated snapshot verifies Dart 3.6.0 for dependency resolution,
+    analysis, and all workspace VM tests.
+  - Long codec fuzz passes 100,000 PDU-decoder cases, 100,000 assembler cases,
+    and 25,000 framing cases. The network suite retains its association fuzz;
+    all 19 live interop tests and both retrieval/render examples pass.
+  - A consumer of local package archives verifies the sealed family, exhaustive
+    matching, export identity, and the prior PDV/length contracts outside the
+    original source tree. Direct publication dry-run has only the expected
+    dirty-tree warning (exit 65); the full dry script skips the changed package.
+  - All-file and explicit new-file hooks pass. `git diff --check` is clean;
+    earlier uncommitted files outside the approved shared edits are byte-identical.
+
+The 216-test network baseline passes. The exhaustive-matching and seven-const-
+constructor test passes before the move. Earlier DUL and PDV work is preserved.
+
+### Item boundaries and negotiation-item extraction (2026-10-19)
+
+- [x] Reject item decoders that consume beyond their declared body before the
+  reader advances to a sibling. Keep unread-body skipping and existing unknown
+  item handling. Five boundary regressions fail before the fix and pass after it.
+- [x] Extract identifiers, presentation contexts, and user information into
+  three independent libraries behind the explicit `pdu/items.dart` export barrel.
+  Preserve type/constructor identity, const construction, bytes and ordering,
+  duplicate-field handling, missing versus zero maximum length, mutable
+  constructor inputs, and copied decoded unknown-item payloads.
+- [x] Add I-37 to enforce the barrel, exact module membership and downward
+  dependencies; update the structure map and boundary behavior contract.
+- [x] Verify extraction and compatibility:
+  - The three declaration blocks match the original source, apart from trailing
+    blank lines removed by the formatter at their new file ends. All 8,192 seeded
+    PDU results match after the boundary fix and before/after extraction: 2,959
+    successful decodes and 5,233 identical FormatExceptions, including bytes,
+    fields, summaries and error messages.
+  - Six characterization tests pass on the unsplit implementation. All 219
+    preceding network tests remain; 232 pass after the change on Dart 3.13.5
+    and actual Dart 3.6.0. Added twelve item tests and the I-37 fitness test.
+  - Fifteen planted preservation and structural violations fail their checks;
+    all mutations are restored. The pre-fix run separately demonstrates the
+    five boundary regressions.
+  - Full dry gates pass for both the bug fix and final extraction, including
+    Chrome, Wasm, fixtures, written-file checks and available publication checks.
+    The isolated floor replay verifies Dart 3.6.0 dependency resolution, analysis
+    and all workspace VM tests.
+  - All 19 live interop tests and the C-GET/C-MOVE retrieval/render examples
+    pass. Local package archives preserve item exports, boundary rejection and
+    codecs outside the original source tree. Direct publication dry-run has
+    only the expected uncommitted-tree warning (exit 65); no publication or
+    hosted CI is claimed.
+  - All-file and explicit new-file hooks pass. Earlier uncommitted source and
+    tests outside the approved shared architecture/documentation edits are
+    byte-identical during extraction.
+
+Long network fuzz passes with seed 0: 100,000 PDU-decoder cases, 100,000
+assembler cases, 25,000 framing cases and 5,000 association scenarios. DUL
+cleanup decomposition remains explicitly deferred.

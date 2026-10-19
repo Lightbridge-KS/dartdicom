@@ -6,6 +6,7 @@ import '../fsm/table.dart';
 import '../pdu/pdus.dart';
 import '../transport/transport.dart';
 import 'framer.dart';
+import 'pdu_observations.dart';
 import 'read_ahead.dart';
 import '../timeouts.dart';
 import '../trace/record.dart';
@@ -49,7 +50,8 @@ final class Dul {
             isRequestor: false, observations: observations);
 
   Dul._(this._transport, UlEvent opening, this.timeouts, this.trace,
-      {required this.isRequestor, this.observations}) {
+      {required this.isRequestor, this.observations})
+      : _pduObservations = PduObservations(observations) {
     // Cleanup errors remain observable through closed, even if the caller only
     // awaits a protocol result. They must not become unhandled async errors.
     _closed.future.ignore();
@@ -66,7 +68,7 @@ final class Dul {
   /// Where PDUs and transitions are traced, if anywhere (N-14).
   final Trace? trace;
   final ObservationRecorder? observations;
-  List<ContextObservation> _proposed = const [];
+  final PduObservations _pduObservations;
 
   /// The last local transition, traced with the PDU it sends.
   String? _localTransition;
@@ -126,13 +128,7 @@ final class Dul {
   /// Sends A-ASSOCIATE-RQ and waits for the answer: the A-ASSOCIATE-AC, or
   /// an [AssociationRejected] for an A-ASSOCIATE-RJ.
   Future<AssociateAc> requestAssociation(AssociateRq rq) async {
-    _proposed = [
-      for (final c in rq.contexts)
-        ContextObservation(
-            id: c.id,
-            abstractSyntax: c.abstractSyntax,
-            proposedTransferSyntaxes: c.transferSyntaxes)
-    ];
+    _pduObservations.rememberProposals(rq);
     _local(UlEvent.evt2); // AE-2
     await _transmit(rq);
     _startAcseTimer();
@@ -277,7 +273,7 @@ final class Dul {
   Future<void> _received(UlEvent event, Pdu? pdu,
       {String? invalid, DimseException? because, Uint8List? bytes}) async {
     if (pdu != null || event == UlEvent.evt17) {
-      _observePdu(pdu, ObservationDirection.incoming);
+      _pduObservations.record(pdu, ObservationDirection.incoming);
     }
     final from = _state;
     _armIdle(); // anything received restarts the network timer
@@ -499,7 +495,7 @@ final class Dul {
     final bytes = _encode(pdu);
     try {
       final sent = _transport.send(bytes);
-      _observePdu(pdu, ObservationDirection.outgoing);
+      _pduObservations.record(pdu, ObservationDirection.outgoing);
       onSubmitted?.call();
       await sent;
     } on Object {
@@ -516,7 +512,7 @@ final class Dul {
     final bytes = _encode(pdu);
     try {
       final sent = _transport.send(bytes);
-      _observePdu(pdu, ObservationDirection.outgoing);
+      _pduObservations.record(pdu, ObservationDirection.outgoing);
       await sent.timeout(const Duration(seconds: 1));
     } on TimeoutException {
       _destroyTransport();
@@ -537,83 +533,6 @@ final class Dul {
         carriesValues: pdu is PDataTf);
     _localTransition = null;
     return bytes;
-  }
-
-  void _observePdu(Pdu? pdu, ObservationDirection direction) {
-    final kind = switch (pdu) {
-      AssociateRq() => ObservationKind.associateRequest,
-      AssociateAc() => ObservationKind.associateAccept,
-      AssociateRj() => ObservationKind.associateReject,
-      ReleaseRq() => ObservationKind.releaseRequest,
-      ReleaseRp() => ObservationKind.releaseResponse,
-      Abort() => ObservationKind.abort,
-      PDataTf() => ObservationKind.data,
-      null => ObservationKind.transportClosed,
-    };
-    observations?.emit(kind,
-        direction: direction,
-        contexts: pdu is AssociateAc
-            ? [
-                for (final c in _proposed)
-                  ContextObservation(
-                      id: c.id,
-                      scuRole: pdu.userInformation.roles
-                          .where((r) => r.sopClass == c.abstractSyntax)
-                          .firstOrNull
-                          ?.scu,
-                      scpRole: pdu.userInformation.roles
-                          .where((r) => r.sopClass == c.abstractSyntax)
-                          .firstOrNull
-                          ?.scp,
-                      abstractSyntax: c.abstractSyntax,
-                      proposedTransferSyntaxes: c.proposedTransferSyntaxes,
-                      result: pdu.results
-                          .where((x) => x.id == c.id)
-                          .firstOrNull
-                          ?.result,
-                      selectedTransferSyntax: pdu.results
-                          .where((x) => x.id == c.id && x.result == 0)
-                          .firstOrNull
-                          ?.transferSyntax),
-                for (final result in pdu.results
-                    .where((r) => !_proposed.any((c) => c.id == r.id)))
-                  ContextObservation(
-                      id: result.id,
-                      abstractSyntax: '',
-                      proposedTransferSyntaxes: const [],
-                      result: result.result,
-                      selectedTransferSyntax:
-                          result.result == 0 ? result.transferSyntax : null),
-              ]
-            : pdu is AssociateRq
-                ? _proposed
-                : const [],
-        result: pdu is AssociateRj ? pdu.result : null,
-        source: pdu is AssociateRj
-            ? pdu.source
-            : pdu is Abort
-                ? pdu.source
-                : null,
-        reason: pdu is AssociateRj
-            ? pdu.reason
-            : pdu is Abort
-                ? pdu.reason
-                : null,
-        peerImplementationClassUid: pdu is AssociateAc &&
-                RegExp(r'^[0-9]+(?:\.[0-9]+)+$')
-                    .hasMatch(pdu.userInformation.implementationClassUid) &&
-                pdu.userInformation.implementationClassUid.length <= 64
-            ? pdu.userInformation.implementationClassUid
-            : null,
-        maxInvoked: pdu is AssociateAc
-            ? pdu.userInformation.asyncWindow?.invoked
-            : null,
-        maxPerformed: pdu is AssociateAc
-            ? pdu.userInformation.asyncWindow?.performed
-            : null,
-        peerMaxPduLength: pdu is AssociateAc && pdu.userInformation.hasMaxLength
-            ? pdu.userInformation.maxLength
-            : null);
   }
 
   /// A successful forced teardown can confirm closure after a graceful-close
