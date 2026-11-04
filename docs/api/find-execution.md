@@ -36,6 +36,12 @@ use `AssociationCancellation` on `ApplicationEntity.associate`. Operation
 completion is not association cleanup: release or abort and await `closed`.
 The cancellation future waits for network drain, not a paused match listener's
 close notification.
+The same cancellation deadline also ends an owned Find that is waiting for a
+request write to finish. A late write error is consumed; an already recorded
+association failure takes precedence over a new timeout. Association cleanup
+still requires its separate `closed` result. Later sends on the failed
+association fail with its recorded cause instead of waiting behind a stalled
+write; retry requires a new association. *(amended, 2026-11-04)*
 
 Command field, Message ID Being Responded To and presentation context must match
 before a response becomes an operation status. Invalid correlation is a protocol
@@ -44,6 +50,9 @@ do not assert that an invalid response belongs to the operation.
 A missing Status is a protocol failure in `startCFind`; it does not invent a
 terminal code. Invalid Identifier decoding is also retained as a typed protocol
 failure. The legacy stream's missing-Status fallback is unchanged.
+Complete messages are consumed in PDV order. A later malformed or oversized
+Identifier inside the same PDU does not erase an earlier validated match, pending
+count or optional-key warning. *(amended, 2026-11-04)*
 
 A positive `maxIdentifierBytes` limits accumulated response dataset fragments
 before complete Identifier decoding. Exceeding it fails with

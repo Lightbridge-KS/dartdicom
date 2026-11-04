@@ -293,6 +293,8 @@ final class Association {
       int? maxIdentifierBytes}) {
     late final StreamController<T> out;
     final done = Completer<void>();
+    final interruptedSend = lifecycle == null ? null : Completer<void>();
+    interruptedSend?.future.ignore();
     var started = false;
     var finished = false;
     var cancelled = false;
@@ -319,8 +321,15 @@ final class Association {
             hasDataset: true, priority: mediumPriority);
         extend?.call(request);
         started = true;
-        await _channel.send(DimseMessage(context.id, request,
+        final sending = _channel.send(DimseMessage(context.id, request,
             query.toBytes(transferSyntax: context.transferSyntax)));
+        if (interruptedSend == null) {
+          await sending;
+        } else {
+          // Cancellation must finish even if an injected transport never
+          // settles its send future after closure. Future.any drains late errors.
+          await Future.any([sending, interruptedSend.future]);
+        }
         while (true) {
           while (out.isPaused && !cancelled) {
             await (resumed ??= Completer<void>()).future;
@@ -381,10 +390,13 @@ final class Association {
               .then((_) {}, onError: (Object _) {}));
         }
         final dimse = _dul.timeouts.dimse;
-        final deadline = Timer(
-            dimse,
-            () => unawaited(
-                _dul.abort(because: DimseTimeout(TimeoutKind.dimse, dimse))));
+        final deadline = Timer(dimse, () {
+          final failure = _dul.cause ?? DimseTimeout(TimeoutKind.dimse, dimse);
+          unawaited(_dul.abort(because: failure));
+          if (interruptedSend != null && !interruptedSend.isCompleted) {
+            interruptedSend.completeError(failure);
+          }
+        });
         return done.future.whenComplete(deadline.cancel);
       },
     );

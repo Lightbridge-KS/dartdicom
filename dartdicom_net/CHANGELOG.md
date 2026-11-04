@@ -18,6 +18,12 @@
   missing Status and retains Identifier decode errors as typed protocol failures.
 - Keep explicit Find cancellation independent of paused match listeners while
   retaining success that races cancellation.
+- Bound owned Find cancellation during a stalled request write, consume late
+  write errors and retain an earlier association failure instead of inventing a
+  timeout.
+- Preserve completed matches and response evidence before a later malformed or
+  oversized message in the same PDU; leave valid legacy multi-message behavior
+  intact.
 
 ## [0.1.0-dev.2] - 2026-10-19
 

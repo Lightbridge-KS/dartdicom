@@ -64,6 +64,33 @@ provisional downstream evidence. It is not a dependency of upstream package
 checks, a qualification of an external PACS bundle, or desktop acceptance.
 Published dev.2 does not contain these additive APIs.
 
+## Follow-up lifecycle review (2026-11-04)
+
+The follow-up is based on `6ac4be5`. Four new regressions reproduce two defects:
+an owned Find can remain pending behind a stalled request write after explicit
+cancellation, and whole-PDU assembly can discard a preceding complete match when
+a later message fails. Both are corrected. A fifth test preserves legacy Find
+behavior when several valid messages share one PDU.
+
+- [x] Bound the owned Find's wait for a request write at its explicit cancellation
+  deadline. Consume late write errors and retain an earlier association failure.
+  Fail later sends on the ended association promptly with that same cause.
+- [x] Consume incoming messages in PDV order, preserving completed match evidence
+  before a later malformed/oversized message. Drop queued PDVs on assembly failure.
+- [x] Rerun the focused association/trace suite: 108 tests passed.
+- [x] Rerun the full Dart 3.13.5 dry/Chrome/Wasm/fixture/written-file gates and
+  hooks. Actual Dart 3.6.0 resolution, analysis and workspace VM tests passed in
+  an isolated snapshot: core 404, pixel 194, network 254.
+- [x] Rerun all 20 live interop cases and both retrieval/render examples. Stop
+  the repository test PACS started for this verification.
+
+Public method signatures and result fields are unchanged. No application UI or
+call-site migration is required for these corrections. Clients must still await
+association cleanup separately from operation completion and must not infer peer
+cancellation confirmation from a completed cancellation future. Downstream
+verification remains separately owned; the upstream PR records final hosted
+checks and the required reproducibility-review receipt.
+
 ## Remaining delivery boundaries
 
 - Draft-PR review and merge acceptance.
