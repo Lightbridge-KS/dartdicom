@@ -13,6 +13,8 @@ Links: [requirements](../req/dartdicom-prd.md) · [system architecture](../desig
 **Now:** M5, 0.1.0 and the first consumer. **M4 is done** (2026-10-18, `bcd4f90`…): every exit criterion met; the corpus job runs the pixel gate. **M3 is done** (2026-10-17, `9f4f10a`…): every exit criterion met; the nightly `interop` job runs the matrix on CI. **M2 is done** (2026-10-17, `94d6759`…`c97b788`): every exit criterion met; CI's `corpus` job and the DCMTK install run for the first time on push. **M1 is done** (2026-10-17, `1569aad`…`165b8f6`): `retrieve_and_render` retrieves a series from Orthanc and renders a frame. **M0 is done** (2026-10-17, `285623d` · `424cfa2` · `bed879b`): all exit criteria met, CI green on both workflows.
 **Next:** P1, in order of demand.
 
+Current uncommitted consumer work: [Find execution checkpoint](find-execution.md).
+
 ## Roadmap
 
 ```text

@@ -27,3 +27,5 @@ export 'src/uid/uid.dart';
 export 'src/uid/uids.g.dart';
 export 'src/vr/vr.dart';
 export 'src/write/write_options.dart';
+
+export 'src/charset/charset.dart' show CharacterSetSupport, characterSetSupport;

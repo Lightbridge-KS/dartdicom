@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `CharacterSetSupport` and `characterSetSupport` report supported Specific
+  Character Set declarations without changing permissive decoding defaults.
+
 ## [0.1.0-dev.2] - 2026-10-19
 
 GitHub-only prerelease; not published on pub.dev.

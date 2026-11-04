@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- `Association.startCFind` returns a `FindOperation` with match notifications,
+  retained correlated final status, typed execution failure, explicit cancellation
+  intent, pending-response counts and optional-key warnings. Match subscription
+  lifetime does not control network execution; `sendCFind` retains its defaults.
+- An opt-in positive `maxIdentifierBytes` limits response Identifier reassembly
+  before decoding and fails safely with `DimseIdentifierTooLarge` when exceeded.
+
+### Fixed
+
+- Validate the presentation context along with command and message ID before
+  accepting multi-response operation status. The new Find handle also rejects
+  missing Status and retains Identifier decode errors as typed protocol failures.
+- Keep explicit Find cancellation independent of paused match listeners while
+  retaining success that races cancellation.
+- Bound owned Find cancellation during a stalled request write, consume late
+  write errors and retain an earlier association failure instead of inventing a
+  timeout.
+- Preserve completed matches and response evidence before a later malformed or
+  oversized message in the same PDU; leave valid legacy multi-message behavior
+  intact.
+
 ## [0.1.0-dev.2] - 2026-10-19
 
 GitHub-only prerelease; not published on pub.dev.

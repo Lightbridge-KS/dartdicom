@@ -27,13 +27,16 @@ final class DimseChannel {
   Duration get _dimse => _dul.timeouts.dimse;
   final int _peerMaxPduLength;
   final _assembler = Assembler();
-  final _received = Queue<DimseMessage>();
+  set maxDatasetBytes(int? value) => _assembler.maxDatasetBytes = value;
+  final _pdvs = Queue<Pdv>();
   Future<void> _sending = Future.value();
 
   /// Sends [message], fragmented for the peer. Messages go out whole, in
   /// the order sent: a C-CANCEL-RQ never lands between another message's
   /// PDUs (PS3.8 §9.3.5).
   Future<void> send(DimseMessage message) {
+    // An ended association must not enqueue more work behind a stalled write.
+    if (_dul.cause case final cause?) return Future.error(cause);
     _trace(message, outgoing: true);
     final sent = _sending.then((_) async {
       var first = true;
@@ -52,7 +55,24 @@ final class DimseChannel {
   /// bounded by the DIMSE timeout, unless [timed] is false (an acceptor
   /// waiting for its next request, which the network timer bounds).
   Future<DimseMessage> receive({bool timed = true}) async {
-    while (_received.isEmpty) {
+    while (true) {
+      if (_pdvs.isNotEmpty) {
+        // Consume through one completed message before inspecting later PDVs.
+        // A later invalid/oversized message must not erase preceding evidence.
+        final List<DimseMessage> messages;
+        try {
+          messages = _assembler.feed(PDataTf([_pdvs.removeFirst()]));
+        } on DimseException catch (error) {
+          _pdvs.clear();
+          if (error is DimseProtocolException) await _dul.abort();
+          rethrow;
+        }
+        if (messages.isEmpty) continue;
+        final message = messages.single;
+        _observe(message, outgoing: false);
+        _trace(message, outgoing: false);
+        return message;
+      }
       final timer = timed
           ? Timer(
               _dimse,
@@ -71,19 +91,8 @@ final class DimseChannel {
       if (pdu is! PDataTf) {
         await protocolAbort('unexpected $pdu during an operation');
       }
-      final List<DimseMessage> messages;
-      try {
-        messages = _assembler.feed(pdu);
-      } on DimseProtocolException {
-        await _dul.abort();
-        rethrow;
-      }
-      _received.addAll(messages);
+      _pdvs.addAll(pdu.pdvs);
     }
-    final message = _received.removeFirst();
-    _observe(message, outgoing: false);
-    _trace(message, outgoing: false);
-    return message;
   }
 
   void _observe(DimseMessage message, {required bool outgoing}) {

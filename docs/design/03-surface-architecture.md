@@ -283,6 +283,7 @@ stateDiagram-v2
 | `sendCEcho()`, `sendCStore(file)` | `Future<DimseStatus>` (sealed: `DimseSuccess`, `DimsePending`, `DimseWarning`, `DimseFailure`, `DimseCancel`; *amended in M1: prefixed, because bare `Success` / `Failure` collide with common result-type packages*) | a value; `.orThrow()` opts into an exception |
 | `sendCGet` / `sendCMove` | `Stream<RetrieveProgress>`; the last event carries the final `DimseStatus` | S5 |
 | `sendCFind` | `Stream<Dataset>` of matches | S5 |
+| `startCFind` | `FindOperation`: broadcast match notifications, independent `done`, explicit `cancel` and an optional Identifier byte limit | [Find execution contract](../api/find-execution.md) *(amended, 2026-11-04)* |
 
 - **S5: final status on streams (decided 2026-10-16).**
   - Streams complete normally on `Success`, `Warning` and `Cancel`.
@@ -290,6 +291,12 @@ stateDiagram-v2
   - Retrieves still deliver the final status in their last `RetrieveProgress`, which keeps partial failures visible without throwing.
 
   This refines D3 for multi-response operations.
+
+  *(amended, 2026-11-04)* The additive `startCFind` handle serves consumers that
+  must retain final status independently of presentation subscriptions. Its
+  callers must await `done` and inspect status/failure; cancelling a match
+  listener does not cancel execution. Explicit `FindOperation.cancel` uses the
+  existing cancel/drain engine. The legacy streams keep S5 semantics and defaults.
 
 **Exceptions** all extend `DicomException`.
 
