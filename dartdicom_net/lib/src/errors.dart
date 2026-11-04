@@ -94,3 +94,10 @@ String describeAssociationRejection(int source, int reason) =>
       (3, 2) => 'local limit exceeded; retry later',
       _ => 'source $source, reason $reason',
     };
+
+/// An opt-in DIMSE dataset reassembly bound was exceeded before decoding.
+final class DimseIdentifierTooLarge extends DimseException {
+  const DimseIdentifierTooLarge(this.limit)
+      : super('Find Identifier exceeds the configured byte limit');
+  final int limit;
+}

@@ -65,3 +65,24 @@ Uint8List encodeText(String text, List<String> specificCharacterSet, Tag tag) {
           tag: tag);
   }
 }
+
+/// Whether this version faithfully supports a declared text repertoire.
+/// This query does not change the existing lenient decoding policy.
+enum CharacterSetSupport { supported, unsupported }
+
+/// Reports support for the declared Specific Character Set [terms].
+///
+/// This checks declarations, not the validity of encoded text bytes. Multiple
+/// terms and code-extension declarations are unsupported, even where lenient
+/// decoding can fall back to a single repertoire.
+CharacterSetSupport characterSetSupport(List<String> terms) {
+  if (terms.length > 1) return CharacterSetSupport.unsupported;
+  return switch (terms.isEmpty ? '' : terms.single.trim()) {
+    '' ||
+    'ISO_IR 6' ||
+    'ISO_IR 100' ||
+    'ISO_IR 192' =>
+      CharacterSetSupport.supported,
+    _ => CharacterSetSupport.unsupported,
+  };
+}

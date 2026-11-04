@@ -19,6 +19,8 @@ import 'store.dart';
 import '../transport/transport.dart';
 import 'application_entity.dart';
 
+part 'find_operation.dart';
+
 /// An established association with a peer AE: the DIMSE operations run
 /// here, one at a time.
 ///
@@ -186,6 +188,37 @@ final class Association {
                 _ => null,
               });
 
+  /// Starts an owned Find with terminal evidence independent of match listeners.
+  /// Listening, pausing or cancelling [FindOperation.matches] never controls I/O.
+  /// Use [FindOperation.cancel] explicitly; always await [FindOperation.done].
+  /// [maxIdentifierBytes] bounds reassembly before dataset decoding. Null keeps
+  /// the legacy unlimited-message default (the existing PDU bound still applies).
+  FindOperation startCFind(Dataset query,
+      {QueryRetrieveModel model = QueryRetrieveModel.studyRoot,
+      int? maxIdentifierBytes}) {
+    if (maxIdentifierBytes != null && maxIdentifierBytes < 1) {
+      throw ArgumentError.value(
+          maxIdentifierBytes, 'maxIdentifierBytes', 'must be positive');
+    }
+    final lifecycle = _FindLifecycle();
+    final source = _operation<FindMatch>(
+        'C-FIND', model.find, CommandField.cFindRq, query,
+        lifecycle: lifecycle,
+        maxIdentifierBytes: maxIdentifierBytes, emit: (rsp, status, context) {
+      if (status is! DimsePending || rsp.dataset == null) return null;
+      try {
+        return FindMatch(
+            Dataset.fromBytes(rsp.dataset!,
+                transferSyntax: context.transferSyntax),
+            status,
+            rsp.dataset!.length);
+      } on DicomDataException {
+        throw DimseProtocolException('a Find Identifier could not be decoded');
+      }
+    });
+    return FindOperation._(source, lifecycle);
+  }
+
   /// Sends C-GET-RQ with [query] and receives the instances it matches on
   /// this association, each handed to [sink] (PRD N-08, N-11).
   ///
@@ -255,7 +288,9 @@ final class Association {
               DimseMessage rsp, DimseStatus status, AcceptedContext context)
           emit,
       Future<void> Function(DimseMessage rq)? onStore,
-      void Function(Dataset command)? extend}) {
+      void Function(Dataset command)? extend,
+      _FindLifecycle? lifecycle,
+      int? maxIdentifierBytes}) {
     late final StreamController<T> out;
     final done = Completer<void>();
     var started = false;
@@ -271,11 +306,14 @@ final class Association {
         _enter();
       } on Object catch (e, stack) {
         out.addError(e, stack);
+        lifecycle?.fail(e, stack);
+        lifecycle?.finish();
         done.complete();
         await out.close();
         return;
       }
       try {
+        _channel.maxDatasetBytes = maxIdentifierBytes;
         id = _nextMessageId();
         final request = requestCommand(command, id, sopClass,
             hasDataset: true, priority: mediumPriority);
@@ -293,9 +331,14 @@ final class Association {
             await onStore(message);
             continue;
           }
-          final rsp =
-              await _expect(message, id, CommandField.responseOf(command));
+          final rsp = await _expect(
+              message, id, CommandField.responseOf(command),
+              contextId: context.id);
+          if (lifecycle != null && rsp.status == null) {
+            await _channel.protocolAbort('a C-FIND response has no Status');
+          }
           final status = rsp.outcome;
+          lifecycle?.response(status);
           final item = emit(rsp, status, context);
           final last = status is! DimsePending;
           // Marked before the last item is emitted, so cancelling on that
@@ -309,10 +352,13 @@ final class Association {
           break;
         }
       } on Object catch (e, stack) {
+        lifecycle?.fail(e, stack);
         if (!cancelled) out.addError(e, stack);
         await _dul.abort(because: e is DimseException ? e : null);
       } finally {
+        _channel.maxDatasetBytes = null;
         _exit();
+        lifecycle?.finish();
         done.complete();
         if (!cancelled) await out.close();
       }
@@ -402,9 +448,11 @@ final class Association {
 
   /// [message], which must be a [field] response to request [id]: anything
   /// else aborts the association.
-  Future<DimseMessage> _expect(DimseMessage message, int id, int field) async {
+  Future<DimseMessage> _expect(DimseMessage message, int id, int field,
+      {int? contextId}) async {
     if (message.commandField != field ||
-        message.messageIdBeingRespondedTo != id) {
+        message.messageIdBeingRespondedTo != id ||
+        (contextId != null && message.contextId != contextId)) {
       await _channel
           .protocolAbort('expected the response to message $id, but got '
               '$message responding to ${message.messageIdBeingRespondedTo}');

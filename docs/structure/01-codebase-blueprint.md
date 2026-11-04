@@ -39,7 +39,7 @@ These are the places where two inputs disagree, or where a single input disagree
 | F11 | PRD "no shared global state" **×** private dictionaries, which pydicom adds to a global `add_dict_entry` | `Dictionary` is an immutable value: `Dictionary.standard.withPrivate(...)`, passed in through `ReadOptions`. |
 | F12 | Design D3 (`DimseStatus` returned as a value) **×** PRD N-05 (never an empty or falsy stand-in) | These are compatible only if `DimseStatus` is sealed and has no default that means success. Callers must match on it or call `.orThrow()`. |
 | F13 | Design §4.1 (the dataset converts lazily and loads deferred values) **×** the prototype, where `Dataset` imports both `filereader` and `filewriter` (a cycle) | `dataset/` imports nothing from `read/` or `write/`. Loading a deferred value goes through the injected `SourceOpener` and the value converters (invariant I-5). |
-| F14 | PRD N-07 (C-CANCEL) **×** Dart streams | Cancelling the subscription to the `sendCFind` / `sendCGet` / `sendCMove` stream sends C-CANCEL-RQ. Cancel is never a separate method. *(amended 2026-10-17, M3:)* the cancel goes out at once, from `onCancel`; responses are then drained to the final one within one DIMSE timeout, with a C-GET's sub-operations still stored. `cancel()` always completes normally. A failed drain aborts the association, and the next call throws its cause. |
+| F14 | PRD N-07 (C-CANCEL) **×** Dart streams | Cancelling the subscription to the `sendCFind` / `sendCGet` / `sendCMove` stream sends C-CANCEL-RQ. The legacy streams have no separate cancel method. *(amended 2026-11-04:)* the additive `startCFind` handle instead separates match listeners from execution and exposes `FindOperation.cancel`; its independent `done` retains final status and failure. *(amended 2026-10-17, M3:)* the cancel goes out at once, from `onCancel`; responses are then drained to the final one within one DIMSE timeout, with a C-GET's sub-operations still stored. `cancel()` always completes normally. A failed drain aborts the association, and the next call throws its cause. |
 
 **Reconciliation with the data architecture (2026-10-16).**
 
@@ -282,6 +282,7 @@ Interfaces exist only at real seams, and each has at least two implementations.
 | Add or change an exception type | the package's `lib/src/errors.dart` (its sealed subtree, F30) |
 | Change the keyword → identifier rule | `dartdicom/tool/gen_dictionary/naming.dart`, plus its golden test (I-26) |
 | Add a preset context list | `dartdicom_net/lib/src/association/presentation_contexts.dart` |
+| Change the owned Find handle or retained terminal evidence | `dartdicom_net/lib/src/association/find_operation.dart` (a part of `association.dart`), sharing the existing multi-response engine; [contract](../api/find-execution.md) *(amended, 2026-11-04)* |
 | Update the pydicom mapping or agent docs | the package's `README.md` and `llms.txt` (the snippets must compile, I-25) |
 | Change a VR's Dart type (the data §3.4 contract): a **major** version | the contract table in `dartdicom/tool/gen_dictionary/`, plus `vr/` |
 | Change how values are byte-swapped when byte order changes | `dartdicom/lib/src/write/` |

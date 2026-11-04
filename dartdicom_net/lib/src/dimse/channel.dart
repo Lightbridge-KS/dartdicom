@@ -27,6 +27,7 @@ final class DimseChannel {
   Duration get _dimse => _dul.timeouts.dimse;
   final int _peerMaxPduLength;
   final _assembler = Assembler();
+  set maxDatasetBytes(int? value) => _assembler.maxDatasetBytes = value;
   final _received = Queue<DimseMessage>();
   Future<void> _sending = Future.value();
 

@@ -23,6 +23,38 @@ final _aet = _env['ORTHANC_AET'] ?? 'ORTHANC';
 final _skip = live;
 
 void main() {
+  test('owned Find retains terminal status and leaves the association reusable',
+      () async {
+    const ae = ApplicationEntity(aeTitle: 'DARTDICOM', requestedContexts: [
+      ...PresentationContexts.verification,
+      ...PresentationContexts.studyRootQueryRetrieve,
+    ]);
+    final assoc = await ae.associate(_host, _port, aeTitle: _aet);
+    try {
+      final find = assoc.startCFind(
+          Dataset()
+            ..set(DicomTags.queryRetrieveLevel, 'STUDY')
+            ..set(DicomTags.patientId, patientId)
+            ..setEmpty(DicomTags.studyInstanceUid),
+          maxIdentifierBytes: 1024 * 1024);
+      final rows = find.matches.toList();
+      final completion = await find.done;
+      final matches = await rows;
+      expect(completion.status, isA<DimseSuccess>());
+      expect(completion.failure, isNull);
+      expect(completion.responses, matches.length);
+      expect(matches, isNotEmpty);
+      expect(matches.every((m) => m.encodedBytes > 0), isTrue);
+      expect(matches.first.dataset.get(DicomTags.studyInstanceUid), isNotNull);
+      expect(await assoc.sendCEcho(), isA<DimseSuccess>());
+      await assoc.release();
+      await assoc.closed;
+    } finally {
+      assoc.forceClose();
+      await assoc.closed;
+    }
+  }, skip: _skip);
+
   test('C-ECHO, then release', () async {
     const ae = ApplicationEntity(
         aeTitle: 'DARTDICOM',

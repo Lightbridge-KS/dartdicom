@@ -41,6 +41,8 @@ List<PDataTf> fragment(DimseMessage message, int maxPduLength) {
 /// is negotiated); a PDV for another context mid-message, or a dataset
 /// fragment before its command, is a protocol violation.
 final class Assembler {
+  /// Optional bound on a reassembled dataset, independent of PDU lengths.
+  int? maxDatasetBytes;
   final _command = BytesBuilder(copy: false);
   final _dataset = BytesBuilder(copy: false);
   Dataset? _awaitingDataset;
@@ -75,6 +77,10 @@ final class Assembler {
         if (command == null) {
           throw DimseProtocolException(
               'a dataset fragment arrived before its command');
+        }
+        final cap = maxDatasetBytes;
+        if (cap != null && _dataset.length + pdv.data.length > cap) {
+          throw DimseIdentifierTooLarge(cap);
         }
         _dataset.add(pdv.data);
         if (!pdv.isLast) continue;
